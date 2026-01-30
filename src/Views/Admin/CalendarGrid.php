@@ -21,10 +21,10 @@ class CalendarGrid {
      */
     public static function render($context) {
         $text_domain = isset($context['text_domain']) ? $context['text_domain'] : 'calendar-service-appointments-form';
-        $calendar_cells = isset($context['calendar_cells']) ? $context['calendar_cells'] : array();
+        $calendar_cells = isset($context['calendar_cells']) ? $context['calendar_cells'] : [];
         $month = isset($context['month']) ? (int) $context['month'] : 0;
         $year = isset($context['year']) ? (int) $context['year'] : 0;
-        $day_labels = array('Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat');
+        $day_labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         ?>
         <table class="csa-calendar" data-month="<?php echo esc_attr($month); ?>" data-year="<?php echo esc_attr($year); ?>">

@@ -1,4 +1,4 @@
-import { qs, qsa, delegate, on, postAjax } from './utils.js';
+import { qs, qsa, delegate, on, postAjax, scrollToTopOnLoad } from './utils.js';
 import { AdminDayDetailsRenderer } from './render/admin/day-details-renderer.js';
 import { AdminDaySummaryRenderer } from './render/admin/day-summary-renderer.js';
 import { AdminHolidayAvailabilityRenderer } from './render/admin/holiday-availability-renderer.js';
@@ -37,6 +37,7 @@ export class AdminCalendar {
             return;
         }
 
+        scrollToTopOnLoad();
         this.bindGlobalLoading();
         this.bindNavigation();
         this.bindCalendarDayClick();
@@ -47,6 +48,7 @@ export class AdminCalendar {
         this.bindHolidayAvailability();
         this.bindDayRendered();
         this.bindLoadSubmissionFields();
+        this.bindTimezoneSelector();
 
         this.updateNavButtons();
         this.renderWeeklyAvailability();
@@ -479,6 +481,64 @@ export class AdminCalendar {
     }
 
     /**
+     * Bind timezone selector.
+     *
+     * @returns {void}
+     */
+    bindTimezoneSelector() {
+        const select = qs('#csa-admin-timezone');
+        const save = qs('#csa-save-timezone');
+        if (!select || !save) {
+            return;
+        }
+
+        const baseline = this.config && this.config.timezone ? String(this.config.timezone) : '';
+
+        const updateSaveState = () => {
+            save.disabled = String(select.value) === baseline;
+        };
+
+        const saveTimezone = async () => {
+            const timezone = select.value;
+            if (!timezone) {
+                return;
+            }
+            save.disabled = true;
+            this.keepLoading = true;
+            try {
+                const response = await this.request({
+                    action: 'csa_save_timezone',
+                    nonce: this.config.nonce,
+                    timezone,
+                });
+                if (response.success) {
+                    window.location.reload();
+                } else {
+                    const message = response.data && response.data.message ? response.data.message : 'Error saving time zone';
+                    window.alert(message);
+                }
+            } catch (error) {
+                window.alert('Error saving time zone');
+            } finally {
+                save.disabled = false;
+                this.keepLoading = false;
+                this.body.classList.remove('loading-overlay');
+            }
+        };
+
+        on(save, 'click', (event) => {
+            event.preventDefault();
+            saveTimezone();
+        });
+
+        on(select, 'change', () => {
+            updateSaveState();
+        });
+
+        updateSaveState();
+    }
+
+    /**
      * Check if a month is earlier than the minimum.
      *
      * @param {number} month
@@ -565,6 +625,8 @@ export class AdminCalendar {
             data,
             timeSlots: qs('#csa-time-slots'),
             modalDate: qs('#csa-modal-date'),
+            modalTimezone: qs('#csa-modal-timezone'),
+            timezoneLabel: this.config.timezone_label || '',
         });
 
         document.dispatchEvent(new CustomEvent('csa:dayRendered', { detail: data }));

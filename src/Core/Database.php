@@ -38,6 +38,27 @@ class Database {
     public const OPTION_HOLIDAY_AVAILABILITY = 'csa_holiday_availability';
 
     /**
+     * Option name for services list
+     *
+     * @var string
+     */
+    public const OPTION_SERVICES = 'csa_services';
+
+    /**
+     * Option name for selected timezone
+     *
+     * @var string
+     */
+    public const OPTION_TIMEZONE = 'csa_timezone';
+
+    /**
+     * Option flag indicating stored times are UTC
+     *
+     * @var string
+     */
+    public const OPTION_TIMES_ARE_UTC = 'csa_times_are_utc';
+
+    /**
      * Table name for blocked time slots
      *
      * @var string
@@ -96,15 +117,15 @@ class Database {
         $opt = get_option(self::OPTION_WEEKLY_AVAILABILITY, false);
         if ($opt === false) {
             // default: Mon-Fri at predefined 30-minute increments
-            $default = array();
+            $default = [];
             for ($d = 0; $d <= 6; $d++) {
-                $default[$d] = array();
+                $default[$d] = [];
             }
-            $default_times = array(
+            $default_times = [
                 '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
                 '11:00', '11:30', '13:00', '13:30', '14:00', '14:30',
                 '15:00', '15:30', '16:00', '16:30',
-            );
+            ];
             for ($d = 1; $d <= 5; $d++) {
                 $default[$d] = $default_times;
             }
@@ -131,9 +152,9 @@ class Database {
      * @return array Array of enabled holiday keys.
      */
     public function get_holiday_availability() {
-        $opt = get_option(self::OPTION_HOLIDAY_AVAILABILITY, array());
+        $opt = get_option(self::OPTION_HOLIDAY_AVAILABILITY, []);
         if (!is_array($opt)) {
-            return array();
+            return [];
         }
         return $opt;
     }
@@ -149,12 +170,130 @@ class Database {
     }
 
     /**
+     * Get services list from options.
+     *
+     * @return array
+     */
+    public function get_services() {
+        $opt = get_option(self::OPTION_SERVICES, []);
+        if (!is_array($opt)) {
+            return [];
+        }
+        return $opt;
+    }
+
+    /**
+     * Save services list to options.
+     *
+     * @param array $services
+     * @return bool
+     */
+    public function save_services($services) {
+        return update_option(self::OPTION_SERVICES, $services);
+    }
+
+    /**
+     * Get selected timezone string.
+     *
+     * @return string
+     */
+    public function get_timezone_string() {
+        $tz = get_option(self::OPTION_TIMEZONE, '');
+        if (!$tz) {
+            $tz = 'America/New_York';
+        }
+        if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz)) {
+            return 'America/New_York';
+        }
+        try {
+            new \DateTimeZone($tz);
+            return $tz;
+        } catch (\Exception $e) {
+            return 'America/New_York';
+        }
+    }
+
+    /**
+     * Save selected timezone string.
+     *
+     * @param string $timezone
+     * @return bool
+     */
+    public function save_timezone($timezone) {
+        return update_option(self::OPTION_TIMEZONE, $timezone);
+    }
+
+    /**
+     * Ensure existing stored times are migrated to UTC once.
+     *
+     * @return void
+     */
+    public function maybe_migrate_times_to_utc() {
+        $done = get_option(self::OPTION_TIMES_ARE_UTC, '');
+        if ($done === '1') {
+            return;
+        }
+
+        $timezone = $this->get_timezone_string();
+        $tz = $this->get_timezone_object($timezone);
+        $utc = new \DateTimeZone('UTC');
+
+        global $wpdb;
+
+        // Migrate blocked slots
+        if ($this->does_table_exist($this->table_name)) {
+            $rows = $wpdb->get_results("SELECT id, block_date, block_time FROM {$this->table_name}", ARRAY_A);
+            foreach ($rows as $row) {
+                $local = $this->build_datetime($row['block_date'], $row['block_time'], $tz);
+                if (!$local) {
+                    continue;
+                }
+                $utc_dt = $local->setTimezone($utc);
+                $wpdb->update(
+                    $this->table_name,
+                    [
+                        'block_date' => $utc_dt->format('Y-m-d'),
+                        'block_time' => $utc_dt->format('H:i:s'),
+                    ],
+                    ['id' => intval($row['id'])],
+                    ['%s', '%s'],
+                    ['%d']
+                );
+            }
+        }
+
+        // Migrate appointments table
+        if ($this->does_table_exist($this->appointments_table)) {
+            $rows = $wpdb->get_results("SELECT id, appointment_date, appointment_time FROM {$this->appointments_table}", ARRAY_A);
+            foreach ($rows as $row) {
+                $local = $this->build_datetime($row['appointment_date'], $row['appointment_time'], $tz);
+                if (!$local) {
+                    continue;
+                }
+                $utc_dt = $local->setTimezone($utc);
+                $wpdb->update(
+                    $this->appointments_table,
+                    [
+                        'appointment_date' => $utc_dt->format('Y-m-d'),
+                        'appointment_time' => $utc_dt->format('H:i:s'),
+                    ],
+                    ['id' => intval($row['id'])],
+                    ['%s', '%s'],
+                    ['%d']
+                );
+            }
+        }
+
+        update_option(self::OPTION_TIMES_ARE_UTC, '1');
+    }
+
+    /**
      * Get manual overrides for availability (per-date)
      *
      * @return array date => [ 'HH:MM' => 'allow'|'block' ]
      */
     public function get_manual_overrides() {
-        $opt = get_option(self::OPTION_MANUAL_OVERRIDES, array());
+        $opt = get_option(self::OPTION_MANUAL_OVERRIDES, []);
         return (array) $opt;
     }
 
@@ -166,7 +305,7 @@ class Database {
      */
     public function get_overrides_for_date($date) {
         $all = $this->get_manual_overrides();
-        return isset($all[$date]) ? $all[$date] : array();
+        return isset($all[$date]) ? $all[$date] : [];
     }
 
     /**
@@ -180,7 +319,7 @@ class Database {
     public function set_manual_override($date, $time, $status) {
         $all = $this->get_manual_overrides();
         if (!isset($all[$date])) {
-            $all[$date] = array();
+            $all[$date] = [];
         }
         if ($status === 'remove') {
             if (isset($all[$date][$time])) {
@@ -207,18 +346,15 @@ class Database {
     public function reserve_time_slot($date, $time) {
         global $wpdb;
 
-        // Normalize time to H:i:s
-        if (strlen($time) === 5) {
-            $time = $time . ':00';
-        }
+        $utc = $this->convert_local_to_utc($date, $time);
 
         $result = $wpdb->insert(
             $this->table_name,
-            array(
-                'block_date' => $date,
-                'block_time' => $time,
-            ),
-            array('%s', '%s')
+            [
+                'block_date' => $utc['date'],
+                'block_time' => $utc['time'],
+            ],
+            ['%s', '%s']
         );
 
         if ($result === false) {
@@ -287,15 +423,13 @@ class Database {
     public function insert_appointment($submission_id, $date, $time, $submission_data = null) {
         global $wpdb;
 
-        if (strlen($time) === 5) {
-            $time = $time . ':00';
-        }
+        $utc = $this->convert_local_to_utc($date, $time);
 
-        $data = array(
+        $data = [
             'submission_id' => $submission_id ? intval($submission_id) : null,
-            'appointment_date' => $date,
-            'appointment_time' => $time,
-        );
+            'appointment_date' => $utc['date'],
+            'appointment_time' => $utc['time'],
+        ];
 
         if (!empty($submission_data)) {
             if (is_array($submission_data)) {
@@ -306,7 +440,7 @@ class Database {
             $data['submission_data'] = $json;
         }
 
-        $formats = array('%d', '%s', '%s');
+        $formats = ['%d', '%s', '%s'];
         if (isset($data['submission_data'])) { $formats[] = '%s'; }
         // Ensure appointments table exists (create on-demand if necessary)
         if (!$this->does_table_exist($this->appointments_table)) {
@@ -325,14 +459,14 @@ class Database {
             if ($submission_id) {
                 $updated = $wpdb->update(
                     $this->appointments_table,
-                    array('submission_data' => isset($data['submission_data']) ? $data['submission_data'] : null),
-                    array(
+                    ['submission_data' => isset($data['submission_data']) ? $data['submission_data'] : null],
+                    [
                         'submission_id' => intval($submission_id),
                         'appointment_date' => $date,
                         'appointment_time' => $time,
-                    ),
-                    array('%s'),
-                    array('%d','%s','%s')
+                    ],
+                    ['%s'],
+                    ['%d','%s','%s']
                 );
                 if ($updated !== false) {
                     // fetch id
@@ -356,17 +490,18 @@ class Database {
      */
     public function get_appointments_for_month_from_table($year, $month) {
         global $wpdb;
-        $start_date = sprintf('%04d-%02d-01', $year, $month);
-        $end_date = date('Y-m-t', strtotime($start_date));
+        $range = $this->get_utc_range_for_local_month($year, $month);
+        $start_date = $range['start'];
+        $end_date = $range['end'];
         if (!$this->does_table_exist($this->appointments_table)) {
-            return array();
+            return [];
         }
 
         // If submission_data column exists, include it; otherwise select without it
         if ($this->table_has_column($this->appointments_table, 'submission_data')) {
             $results = $wpdb->get_results($wpdb->prepare(
                 "SELECT id, submission_id, appointment_date, appointment_time, submission_data, created_at FROM {$this->appointments_table}
-                WHERE appointment_date BETWEEN %s AND %s
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
                 ORDER BY appointment_date, appointment_time",
                 $start_date,
                 $end_date
@@ -374,23 +509,31 @@ class Database {
 
             // decode submission_data JSON into array
             foreach ($results as &$r) {
+                $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
+                $r['appointment_date'] = $local['date'];
+                $r['appointment_time'] = $local['time'];
                 if (!empty($r['submission_data'])) {
                     $decoded = json_decode($r['submission_data'], true);
                     $r['submission_data'] = $decoded !== null ? $decoded : $r['submission_data'];
                 } else {
-                    $r['submission_data'] = array();
+                    $r['submission_data'] = [];
                 }
             }
         } else {
             $results = $wpdb->get_results($wpdb->prepare(
                 "SELECT id, submission_id, appointment_date, appointment_time, created_at FROM {$this->appointments_table}
-                WHERE appointment_date BETWEEN %s AND %s
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
                 ORDER BY appointment_date, appointment_time",
                 $start_date,
                 $end_date
             ), ARRAY_A);
             // ensure submission_data key exists for compatibility
-            foreach ($results as &$r) { $r['submission_data'] = array(); }
+            foreach ($results as &$r) {
+                $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
+                $r['appointment_date'] = $local['date'];
+                $r['appointment_time'] = $local['time'];
+                $r['submission_data'] = [];
+            }
         }
 
         return $results;
@@ -404,33 +547,45 @@ class Database {
     public function get_appointments_for_date_from_table($date) {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
-            return array();
+            return [];
         }
+
+        $range = $this->get_utc_range_for_local_date($date);
 
         if ($this->table_has_column($this->appointments_table, 'submission_data')) {
             $results = $wpdb->get_results($wpdb->prepare(
                 "SELECT id, submission_id, appointment_date, appointment_time, submission_data, created_at FROM {$this->appointments_table}
-                WHERE appointment_date = %s
-                ORDER BY appointment_time",
-                $date
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
+                ORDER BY appointment_date, appointment_time",
+                $range['start'],
+                $range['end']
             ), ARRAY_A);
 
             foreach ($results as &$r) {
+                $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
+                $r['appointment_date'] = $local['date'];
+                $r['appointment_time'] = $local['time'];
                 if (!empty($r['submission_data'])) {
                     $decoded = json_decode($r['submission_data'], true);
                     $r['submission_data'] = $decoded !== null ? $decoded : $r['submission_data'];
                 } else {
-                    $r['submission_data'] = array();
+                    $r['submission_data'] = [];
                 }
             }
         } else {
             $results = $wpdb->get_results($wpdb->prepare(
                 "SELECT id, submission_id, appointment_date, appointment_time, created_at FROM {$this->appointments_table}
-                WHERE appointment_date = %s
-                ORDER BY appointment_time",
-                $date
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
+                ORDER BY appointment_date, appointment_time",
+                $range['start'],
+                $range['end']
             ), ARRAY_A);
-            foreach ($results as &$r) { $r['submission_data'] = array(); }
+            foreach ($results as &$r) {
+                $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
+                $r['appointment_date'] = $local['date'];
+                $r['appointment_time'] = $local['time'];
+                $r['submission_data'] = [];
+            }
         }
 
         return $results;
@@ -448,7 +603,7 @@ class Database {
             return false;
         }
 
-        return $wpdb->delete($this->appointments_table, array('id' => intval($id)), array('%d'));
+        return $wpdb->delete($this->appointments_table, ['id' => intval($id)], ['%d']);
     }
 
     /**
@@ -462,19 +617,19 @@ class Database {
      */
     public function delete_appointment_by_submission($submission_id, $date, $time) {
         global $wpdb;
-        if (strlen($time) === 5) { $time .= ':00'; }
+        $utc = $this->convert_local_to_utc($date, $time);
         if (!$this->does_table_exist($this->appointments_table)) {
             return false;
         }
 
         return $wpdb->delete(
             $this->appointments_table,
-            array(
+            [
                 'submission_id' => intval($submission_id),
-                'appointment_date' => $date,
-                'appointment_time' => $time,
-            ),
-            array('%d','%s','%s')
+                'appointment_date' => $utc['date'],
+                'appointment_time' => $utc['time'],
+            ],
+            ['%d','%s','%s']
         );
     }
 
@@ -532,14 +687,15 @@ class Database {
      */
     public function block_time_slot($date, $time) {
         global $wpdb;
+        $utc = $this->convert_local_to_utc($date, $time);
 
         return $wpdb->insert(
             $this->table_name,
-            array(
-                'block_date' => $date,
-                'block_time' => $time,
-            ),
-            array('%s', '%s')
+            [
+                'block_date' => $utc['date'],
+                'block_time' => $utc['time'],
+            ],
+            ['%s', '%s']
         );
     }
 
@@ -552,14 +708,15 @@ class Database {
      */
     public function unblock_time_slot($date, $time) {
         global $wpdb;
+        $utc = $this->convert_local_to_utc($date, $time);
 
         return $wpdb->delete(
             $this->table_name,
-            array(
-                'block_date' => $date,
-                'block_time' => $time,
-            ),
-            array('%s', '%s')
+            [
+                'block_date' => $utc['date'],
+                'block_time' => $utc['time'],
+            ],
+            ['%s', '%s']
         );
     }
 
@@ -572,11 +729,12 @@ class Database {
      */
     public function is_slot_blocked($date, $time) {
         global $wpdb;
+        $utc = $this->convert_local_to_utc($date, $time);
 
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$this->table_name} WHERE block_date = %s AND block_time = %s",
-            $date,
-            $time
+            $utc['date'],
+            $utc['time']
         ));
 
         return $count > 0;
@@ -592,18 +750,26 @@ class Database {
     public function get_blocked_slots_for_month($year, $month) {
         global $wpdb;
 
-        $start_date = sprintf('%04d-%02d-01', $year, $month);
-        $end_date = date('Y-m-t', strtotime($start_date));
+        $range = $this->get_utc_range_for_local_month($year, $month);
 
         $results = $wpdb->get_results($wpdb->prepare(
             "SELECT block_date, block_time FROM {$this->table_name}
-            WHERE block_date BETWEEN %s AND %s
+            WHERE CONCAT(block_date, ' ', block_time) BETWEEN %s AND %s
             ORDER BY block_date, block_time",
-            $start_date,
-            $end_date
+            $range['start'],
+            $range['end']
         ), ARRAY_A);
 
-        return $results;
+        $out = [];
+        foreach ($results as $row) {
+            $local = $this->convert_utc_to_local($row['block_date'], $row['block_time']);
+            $out[] = [
+                'block_date' => $local['date'],
+                'block_time' => $local['time'],
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -615,13 +781,147 @@ class Database {
     public function get_blocked_slots_for_date($date) {
         global $wpdb;
 
+        $range = $this->get_utc_range_for_local_date($date);
         $results = $wpdb->get_results($wpdb->prepare(
-            "SELECT block_time FROM {$this->table_name}
-            WHERE block_date = %s
-            ORDER BY block_time",
-            $date
+            "SELECT block_date, block_time FROM {$this->table_name}
+            WHERE CONCAT(block_date, ' ', block_time) BETWEEN %s AND %s
+            ORDER BY block_date, block_time",
+            $range['start'],
+            $range['end']
         ), ARRAY_A);
 
-        return $results;
+        $out = [];
+        foreach ($results as $row) {
+            $local = $this->convert_utc_to_local($row['block_date'], $row['block_time']);
+            $out[] = [
+                'block_date' => $local['date'],
+                'block_time' => $local['time'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Convert local date/time into UTC date/time strings.
+     *
+     * @param string $date Y-m-d
+     * @param string $time H:i or H:i:s
+     * @return array{date:string,time:string}
+     */
+    private function convert_local_to_utc($date, $time) {
+        $tz = $this->get_timezone_object($this->get_timezone_string());
+        $local = $this->build_datetime($date, $time, $tz);
+        if (!$local) {
+            return ['date' => $date, 'time' => $this->normalize_time($time)];
+        }
+        $utc = $local->setTimezone(new \DateTimeZone('UTC'));
+        return [
+            'date' => $utc->format('Y-m-d'),
+            'time' => $utc->format('H:i:s'),
+        ];
+    }
+
+    /**
+     * Convert UTC date/time into local date/time strings.
+     *
+     * @param string $date Y-m-d
+     * @param string $time H:i or H:i:s
+     * @return array{date:string,time:string}
+     */
+    private function convert_utc_to_local($date, $time) {
+        $utc = $this->build_datetime($date, $time, new \DateTimeZone('UTC'));
+        if (!$utc) {
+            return ['date' => $date, 'time' => $this->normalize_time($time)];
+        }
+        $local = $utc->setTimezone($this->get_timezone_object($this->get_timezone_string()));
+        return [
+            'date' => $local->format('Y-m-d'),
+            'time' => $local->format('H:i:s'),
+        ];
+    }
+
+    /**
+     * Build a DateTimeImmutable from date/time.
+     *
+     * @param string $date
+     * @param string $time
+     * @param \DateTimeZone $tz
+     * @return \DateTimeImmutable|null
+     */
+    private function build_datetime($date, $time, $tz) {
+        $time = $this->normalize_time($time);
+        $dt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time, $tz);
+        if ($dt instanceof \DateTimeImmutable) {
+            return $dt;
+        }
+        return null;
+    }
+
+    /**
+     * Normalize time to H:i:s.
+     *
+     * @param string $time
+     * @return string
+     */
+    private function normalize_time($time) {
+        if (strlen($time) === 5) {
+            return $time . ':00';
+        }
+        return $time;
+    }
+
+    /**
+     * Get timezone object with fallback to UTC.
+     *
+     * @param string $timezone
+     * @return \DateTimeZone
+     */
+    private function get_timezone_object($timezone) {
+        try {
+            return new \DateTimeZone($timezone);
+        } catch (\Exception $e) {
+            return new \DateTimeZone('UTC');
+        }
+    }
+
+    /**
+     * Get UTC range for a local date (00:00:00 - 23:59:59).
+     *
+     * @param string $date
+     * @return array{start:string,end:string}
+     */
+    private function get_utc_range_for_local_date($date) {
+        $tz = $this->get_timezone_object($this->get_timezone_string());
+        $start_local = $this->build_datetime($date, '00:00:00', $tz);
+        $end_local = $this->build_datetime($date, '23:59:59', $tz);
+        $utc = new \DateTimeZone('UTC');
+
+        if (!$start_local || !$end_local) {
+            return ['start' => $date . ' 00:00:00', 'end' => $date . ' 23:59:59'];
+        }
+
+        return [
+            'start' => $start_local->setTimezone($utc)->format('Y-m-d H:i:s'),
+            'end' => $end_local->setTimezone($utc)->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    /**
+     * Get UTC range for a local month.
+     *
+     * @param int $year
+     * @param int $month
+     * @return array{start:string,end:string}
+     */
+    private function get_utc_range_for_local_month($year, $month) {
+        $start_date = sprintf('%04d-%02d-01', $year, $month);
+        $end_date = date('Y-m-t', strtotime($start_date));
+        $start = $this->get_utc_range_for_local_date($start_date);
+        $end = $this->get_utc_range_for_local_date($end_date);
+        return [
+            'start' => $start['start'],
+            'end' => $end['end'],
+        ];
     }
 }

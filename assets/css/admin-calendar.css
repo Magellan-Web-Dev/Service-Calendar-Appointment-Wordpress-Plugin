@@ -6,9 +6,21 @@
     margin-top: 20px;
 }
 
+html:has(body.loading-overlay) {
+    overflow: hidden;
+}
+
 body.loading-overlay {
-    opacity: 0.35;
     pointer-events: none;
+}
+
+body.loading-overlay::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 1;
+    pointer-events: none;
+    background: rgb(210 210 210 / 70%);
 }
 
 body::after {
@@ -20,19 +32,6 @@ body::after {
     opacity: 0;
     transition: opacity 0.25s;
     pointer-events: none;
-}
-
-body.loading-overlay::after {
-    content: 'Loading...';
-    font-size: clamp(3rem, 9vw, 5rem);
-    color: #000;
-    inset: 0;
-    margin: auto;
-    width: max-content;
-    height: max-content;
-    text-align: center;
-    opacity: 1;
-    
 }
 
 #csa-save-weekly-availability:disabled {
@@ -173,9 +172,20 @@ body.loading-overlay::after {
     border-bottom: 1px solid #ddd;
 }
 
+.csa-modal-title {
+    display: flex;
+    flex-direction: column;
+}
+
 .csa-modal-header h3 {
     margin: 0;
     font-size: 1.25rem;
+}
+
+.csa-modal-timezone {
+    font-size: 0.85rem;
+    color: #555;
+    margin-top: 4px;
 }
 
 .csa-modal-close {
@@ -430,6 +440,6 @@ p, .csa-appointment-field {
     }
 }
 
-.csa-holiday-availability-section h2 {
+h2 {
     margin-top: 2.5em;
 }

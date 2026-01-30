@@ -35,12 +35,12 @@ class Plugin {
      *
      * @var array
      */
-    public const MODULE_SCRIPT_HANDLES = array(
+    public const MODULE_SCRIPT_HANDLES = [
         'csa-admin-calendar',
         'csa-frontend',
         'csa-elementor-editor',
         'csa-appointment-shortcode',
-    );
+    ];
 
     /**
      * @var Plugin|null
@@ -72,11 +72,11 @@ class Plugin {
      * @return void
      */
     private function init_hooks() {
-        register_activation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, array($this, 'activate'));
-        register_deactivation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, array($this, 'deactivate'));
+        register_activation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'activate']);
+        register_deactivation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'deactivate']);
 
-        add_action('plugins_loaded', array($this, 'init'));
-        add_filter('script_loader_tag', array($this, 'filter_module_script_tag'), 10, 3);
+        add_action('plugins_loaded', [$this, 'init']);
+        add_filter('script_loader_tag', [$this, 'filter_module_script_tag'], 10, 3);
     }
 
     /**
@@ -85,14 +85,15 @@ class Plugin {
      * @return void
      */
     public function init() {
-        Core\Database::get_instance();
+        $db = Core\Database::get_instance();
+        $db->maybe_migrate_times_to_utc();
         Core\Submissions::get_instance();
         Admin\Calendar::get_instance();
         Ajax\Handlers::get_instance();
         Integrations\Elementor::get_instance();
 
         // schedule cleanup hook responder
-        add_action(self::CLEANUP_HOOK, array($this, 'daily_cleanup'));
+        add_action(self::CLEANUP_HOOK, [$this, 'daily_cleanup']);
         
         // Initialize shortcodes (loads src/Shortcodes.php via autoloader)
         if (class_exists('\CalendarServiceAppointmentsForm\Shortcodes')) {

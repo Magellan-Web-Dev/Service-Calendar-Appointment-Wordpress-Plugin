@@ -36,7 +36,7 @@ class Autoloader {
      * @return void
      */
     public function register() {
-        spl_autoload_register(array($this, 'autoload'));
+        spl_autoload_register([$this, 'autoload']);
     }
 
     /**

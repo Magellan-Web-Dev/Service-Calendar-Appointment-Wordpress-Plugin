@@ -1,0 +1,19 @@
+.csa-services-page .csa-service-item {
+    border: 1px solid #ccd0d4;
+    background: #fff;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    border-radius: 4px;
+}
+
+.csa-services-page .csa-service-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.csa-services-page .csa-service-item h2 {
+    margin: 0;
+    font-size: 16px;
+}

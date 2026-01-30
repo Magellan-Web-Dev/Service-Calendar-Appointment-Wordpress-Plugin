@@ -98,3 +98,26 @@ export const formatTime = (time) => {
 
     return `${hour}:${minute} ${period}`;
 };
+
+/**
+ * Scroll the page to the top on load.
+ *
+ * @returns {void}
+ */
+export const scrollToTopOnLoad = () => {
+    const scroll = () => {
+        window.scrollTo(0, 0);
+        if (document.documentElement) {
+            document.documentElement.scrollTop = 0;
+        }
+        if (document.body) {
+            document.body.scrollTop = 0;
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(scroll));
+    } else {
+        requestAnimationFrame(scroll);
+    }
+};

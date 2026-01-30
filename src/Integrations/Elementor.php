@@ -58,12 +58,12 @@ class Elementor {
      */
     private function __construct() {
         // Only initialize processing integration; shortcode handles the editor UI now
-        add_action('elementor_pro/init', array($this, 'init_elementor_integration'));
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+        add_action('elementor_pro/init', [$this, 'init_elementor_integration']);
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_scripts']);
         // shortcode script enqueue handled via enqueue_frontend_scripts
 
         // Listen for saved submissions to persist composite appointment strings
-        add_action('elementor_pro/forms/new_record', array($this, 'handle_new_record'));
+        add_action('elementor_pro/forms/new_record', [$this, 'handle_new_record']);
 
         if (defined('WP_DEBUG') && WP_DEBUG) {
             error_log('[CSA] Elementor::__construct called');
@@ -116,7 +116,7 @@ class Elementor {
             error_log('[CSA] init_elementor_integration called (processing only)');
         }
         // Only hook into form processing to validate appointment fields submitted via shortcode
-        add_action('elementor_pro/forms/process', array($this, 'process_appointment_form'), 10, 2);
+        add_action('elementor_pro/forms/process', [$this, 'process_appointment_form'], 10, 2);
     }
 
     /**
@@ -168,14 +168,14 @@ class Elementor {
      * @return void
      */
     private function enqueue_scripts() {
-        wp_enqueue_style(self::FRONTEND_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/frontend.css', array(), CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
-        wp_enqueue_script(self::FRONTEND_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/frontend-booking.js', array(), CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
+        wp_enqueue_style(self::FRONTEND_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/frontend.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
+        wp_enqueue_script(self::FRONTEND_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/frontend-booking.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
         wp_script_add_data(self::FRONTEND_HANDLE, 'type', 'module');
 
-        wp_localize_script(self::FRONTEND_HANDLE, 'csaFrontend', array(
+        wp_localize_script(self::FRONTEND_HANDLE, 'csaFrontend', [
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('csa_frontend_nonce'),
-        ));
+        ]);
     }
 
     /**
@@ -187,7 +187,7 @@ class Elementor {
             return;
         }
 
-        wp_enqueue_script('csa-elementor-editor', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/elementor-editor.js', array(), CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
+        wp_enqueue_script('csa-elementor-editor', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/elementor-editor.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
         wp_script_add_data('csa-elementor-editor', 'type', 'module');
     }
 
@@ -352,7 +352,7 @@ class Elementor {
                 $time = date('H:i', $time_ts);
 
                 // Build submission data JSON (exclude empty values)
-                $submission_data = array();
+                $submission_data = [];
                 foreach ($raw_fields as $field) {
                     $key = null;
                     $val = null;

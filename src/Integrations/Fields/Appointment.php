@@ -63,14 +63,14 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
         // Visible date input (readonly) and time select; actual saved values use hidden inputs named appointment_date and appointment_time
         $form->add_render_attribute(
             'input' . $item_index,
-            array(
+            [
                 'class' => 'elementor-field-textual elementor-date-field csa-appointment-date-field',
                 'type' => 'text',
                 'name' => $this->get_control_name($item) . '_display',
                 'id' => $this->get_control_id($item) . '_display',
                 'readonly' => 'readonly',
                 'placeholder' => __('Select a date', self::TEXT_DOMAIN),
-            )
+            ]
         );
 
         if (!empty($item['required'])) {

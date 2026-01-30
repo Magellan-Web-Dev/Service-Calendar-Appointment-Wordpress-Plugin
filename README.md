@@ -2,11 +2,11 @@ Calendar Service Appointments Form — README
 
 Overview
 - Adds an admin Appointment Calendar where admins set weekly availability (per weekday, 1-hour slots between 06:00–17:00) and can manually block/unblock specific dates/times.
-- Provides a shortcode [form_appointment_field] that outputs three selects (Month, Day, Time) to be placed inside any editor (Elementor HTML widget, Gutenberg HTML, etc.).
+- Provides a shortcode [csa_appointment_field] with type=\"services\" and type=\"time\" modes for service selection and time booking.
 - Server-side validation prevents double-booking and enforces admin availability.
 
 Shortcode usage
-- Insert `[form_appointment_field]` inside an Elementor HTML widget (or any content area that accepts shortcodes).
+- Insert `[csa_appointment_field type=\"services\" elementor_prop=\"service_field_id\"]` and `[csa_appointment_field type=\"time\" elementor_prop=\"appointment_field_id\"]` inside an Elementor HTML widget (or any content area that accepts shortcodes).
 - The shortcode outputs three labeled selects:
   - `appointment_month` (value: YYYY-MM)
   - `appointment_day` (value: DD)

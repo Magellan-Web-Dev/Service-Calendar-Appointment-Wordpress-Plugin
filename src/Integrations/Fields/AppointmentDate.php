@@ -66,14 +66,14 @@ class AppointmentDate extends \ElementorPro\Modules\Forms\Fields\Field_Base {
     public function render($item, $item_index, $form) {
         $form->add_render_attribute(
             'input' . $item_index,
-            array(
+            [
                 'class' => 'elementor-field-textual elementor-date-field csa-appointment-date-field',
                 'type' => 'text',
                 'name' => $this->get_control_name($item),
                 'id' => $this->get_control_id($item),
                 'readonly' => 'readonly',
                 'placeholder' => __('Select a date', self::TEXT_DOMAIN),
-            )
+            ]
         );
 
         if ($item['required']) {

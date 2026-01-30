@@ -66,11 +66,11 @@ class AppointmentTime extends \ElementorPro\Modules\Forms\Fields\Field_Base {
     public function render($item, $item_index, $form) {
         $form->add_render_attribute(
             'input' . $item_index,
-            array(
+            [
                 'class' => 'elementor-field-textual csa-appointment-time-field',
                 'name' => $this->get_control_name($item),
                 'id' => $this->get_control_id($item),
-            )
+            ]
         );
 
         if ($item['required']) {

@@ -21,7 +21,7 @@ class Holidays {
      */
     public static function get_us_holidays_for_year($year) {
         $year = (int) $year;
-        $holidays = array();
+        $holidays = [];
 
         $holidays[] = self::holiday_entry('new_years_day', "New Year's Day", self::observed_date(self::fixed_date($year, 1, 1), $year));
         $holidays[] = self::holiday_entry('mlk_day', 'Martin Luther King Jr. Day', self::nth_weekday_of_month($year, 1, 1, 3));
@@ -78,12 +78,12 @@ class Holidays {
             return null;
         }
 
-        return array(
+        return [
             'key' => $key,
             'label' => $label,
             'date' => $date->format('Y-m-d'),
             'date_label' => $date->format('F j, Y'),
-        );
+        ];
     }
 
     /**

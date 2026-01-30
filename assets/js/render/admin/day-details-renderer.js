@@ -8,9 +8,11 @@ export class AdminDayDetailsRenderer {
      * @param {Object} options.data
      * @param {HTMLElement|null} options.timeSlots
      * @param {HTMLElement|null} options.modalDate
+     * @param {HTMLElement|null} options.modalTimezone
+     * @param {string} [options.timezoneLabel]
      * @returns {void}
      */
-    static render({ data, timeSlots, modalDate }) {
+    static render({ data, timeSlots, modalDate, modalTimezone, timezoneLabel }) {
         if (!data) {
             return;
         }
@@ -24,6 +26,10 @@ export class AdminDayDetailsRenderer {
 
         if (modalDate) {
             modalDate.textContent = formattedDate;
+        }
+        if (modalTimezone) {
+            const label = timezoneLabel || data.timezone_label || '';
+            modalTimezone.textContent = label ? `Times shown in the ${label} time zone` : '';
         }
 
         const existingControls = qs('#csa-day-controls');

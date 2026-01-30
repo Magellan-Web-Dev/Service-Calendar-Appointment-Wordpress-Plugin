@@ -78,18 +78,18 @@ class Submissions {
         // Prefer plugin appointments table when present
         $rows = $db->get_appointments_for_date_from_table($date);
         if (!empty($rows)) {
-            $out = array();
+            $out = [];
             foreach ($rows as $r) {
                 $submission_id = isset($r['submission_id']) && $r['submission_id'] ? intval($r['submission_id']) : null;
-                $appt = array(
+                $appt = [
                     'id' => $submission_id,
                     'appt_id' => isset($r['id']) ? intval($r['id']) : null,
                     'date' => $r['appointment_date'],
                     'time' => $r['appointment_time'],
                     'status' => isset($r['status']) ? $r['status'] : 'booked',
                     'created_at' => isset($r['created_at']) ? $r['created_at'] : null,
-                    'all_data' => isset($r['submission_data']) ? $r['submission_data'] : array(),
-                );
+                    'all_data' => isset($r['submission_data']) ? $r['submission_data'] : [],
+                ];
 
                 if ($submission_id) {
                     $full = $this->get_appointment_by_submission_id($submission_id);
@@ -111,7 +111,7 @@ class Submissions {
         // If Elementor submission values table doesn't exist, bail early
         $exists = (bool) $wpdb->get_var("SHOW TABLES LIKE '" . esc_sql($values_table) . "'");
         if (!$exists) {
-            return array();
+            return [];
         }
 
         $submission_ids = $wpdb->get_col($wpdb->prepare(
@@ -134,10 +134,10 @@ class Submissions {
 
         $submission_ids = array_unique(array_merge((array) $submission_ids, (array) $composite_ids));
         if (empty($submission_ids)) {
-            return array();
+            return [];
         }
 
-        $out = array();
+        $out = [];
         foreach ($submission_ids as $sid) {
             $appt = $this->get_appointment_by_submission_id($sid);
             if ($appt) {
@@ -167,18 +167,18 @@ class Submissions {
         // Prefer plugin appointments table when rows exist for this month
         $rows = $db->get_appointments_for_month_from_table($year, $month);
         if (!empty($rows)) {
-            $out = array();
+            $out = [];
             foreach ($rows as $r) {
                 $submission_id = isset($r['submission_id']) && $r['submission_id'] ? intval($r['submission_id']) : null;
-                $appt = array(
+                $appt = [
                     'id' => $submission_id,
                     'appt_id' => isset($r['id']) ? intval($r['id']) : null,
                     'date' => $r['appointment_date'],
                     'time' => $r['appointment_time'],
                     'status' => isset($r['status']) ? $r['status'] : 'booked',
                     'created_at' => isset($r['created_at']) ? $r['created_at'] : null,
-                    'all_data' => isset($r['submission_data']) ? $r['submission_data'] : array(),
-                );
+                    'all_data' => isset($r['submission_data']) ? $r['submission_data'] : [],
+                ];
 
                 if ($submission_id) {
                     $full = $this->get_appointment_by_submission_id($submission_id);
@@ -199,7 +199,7 @@ class Submissions {
         // If Elementor submission values table doesn't exist, bail early
         $exists = (bool) $wpdb->get_var("SHOW TABLES LIKE '" . esc_sql($values_table) . "'");
         if (!$exists) {
-            return array();
+            return [];
         }
 
         $submission_ids = $wpdb->get_col($wpdb->prepare(
@@ -224,10 +224,10 @@ class Submissions {
 
         $submission_ids = array_unique(array_merge((array) $submission_ids, (array) $composite_ids));
         if (empty($submission_ids)) {
-            return array();
+            return [];
         }
 
-        $out = array();
+        $out = [];
         foreach ($submission_ids as $sid) {
             $appt = $this->get_appointment_by_submission_id($sid);
             if ($appt) {
@@ -334,7 +334,7 @@ class Submissions {
         $rows = $wpdb->get_results($wpdb->prepare("SELECT `key`, `value` FROM {$values_table} WHERE submission_id = %d", $submission_id), ARRAY_A);
         if (empty($rows)) { return null; }
 
-        $data = array();
+        $data = [];
         foreach ($rows as $r) { $data[$r['key']] = $r['value']; }
 
         // Try to ensure we have appointment_date and appointment_time
@@ -370,13 +370,13 @@ class Submissions {
         $sub_row = $wpdb->get_row($wpdb->prepare("SELECT created_at FROM {$submissions_table} WHERE id = %d", $submission_id), ARRAY_A);
         if ($sub_row && isset($sub_row['created_at'])) { $created_at = $sub_row['created_at']; }
 
-        return array(
+        return [
             'id' => $submission_id,
             'date' => $data[self::FIELD_APPOINTMENT_DATE],
             'time' => $data[self::FIELD_APPOINTMENT_TIME],
             'status' => isset($data['status']) ? $data['status'] : 'pending',
             'created_at' => $created_at,
             'all_data' => $data,
-        );
+        ];
     }
 }
