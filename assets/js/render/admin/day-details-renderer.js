@@ -77,11 +77,12 @@ const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
     let statusHtml = '';
     let actionsHtml = '';
 
+    let createdLabel = '';
     if (slot.appointments) {
         slotClass = 'booked';
         const first = slot.appointments;
         const serviceLabel = first.service || '';
-        const createdLabel = first.submitted_at_unix
+        createdLabel = first.submitted_at_unix
             ? formatTimestamp(first.submitted_at_unix, timezoneName)
             : (first.created_at ? formatTimestamp(first.created_at, timezoneName) : '');
         const startRaw = first.time || slot.time;
@@ -99,7 +100,6 @@ const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
             '</div>' +
             `<div class="csa-time-slot-meta">` +
             `${serviceLabel ? `<div class="csa-time-slot-service"><strong>Service:</strong> ${serviceLabel}</div>` : ''}` +
-            `${createdLabel ? `<div class="csa-time-slot-created"><strong>Submitted:</strong> ${createdLabel}</div>` : ''}` +
             '</div>' +
             `<span class="csa-time-slot-status ${first.status || 'booked'}">${first.status || 'booked'}</span>`;
         actionsHtml = isReschedule ? '' : `<button class="csa-btn csa-btn-view" data-time="${slot.time}">View</button>`;
@@ -127,8 +127,12 @@ const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
     }
 
     const rescheduleClass = isReschedule && slot.appointments ? ' csa-reschedule-disabled' : '';
-    return `<div class="csa-time-slot ${slotClass}${rescheduleClass}" data-time="${slot.time}">` +
+    const headerHtml = `<div class="csa-time-slot-header">` +
         `<div class="csa-time-slot-time">${slotClass === 'booked' ? rangeLabel : timeFormatted}</div>` +
+        `${createdLabel ? `<div class="csa-time-slot-created"><strong>Submitted:</strong> ${createdLabel}</div>` : ''}` +
+        `</div>`;
+    return `<div class="csa-time-slot ${slotClass}${rescheduleClass}" data-time="${slot.time}">` +
+        headerHtml +
         statusHtml +
         `<div class="csa-time-slot-actions">${actionsHtml}</div>` +
         appointmentListHtml +

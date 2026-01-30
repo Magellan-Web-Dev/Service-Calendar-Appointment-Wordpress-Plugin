@@ -244,11 +244,56 @@ body::after {
     background: #e8f5e9;
 }
 
+.csa-time-slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 40px;
+}
+
+@media (max-width: 640px) {
+    .csa-time-slot-header {
+        flex-wrap: wrap;
+        justify-content: center;
+        text-align: center;
+        flex-direction: column;
+    }
+    .csa-time-slot .csa-time-slot-status {
+        text-align: center;
+    }
+    .csa-time-slot .csa-btn {
+        margin: 0 auto;
+    }
+
+    .csa-time-slot .csa-appointment-item {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .csa-time-slot .csa-appointment-actions {
+        margin: 0 auto;
+    }
+}
+
+.csa-time-slot button {
+    padding: 0.6154em 1.1538em;
+}
+
 .csa-time-slot-time {
     font-size: 1rem;
     font-weight: 600;
 }
 
+.csa-time-slot .csa-btn-reschedule {
+    background: #2e7d32;
+    color: #fff;
+}
+
+.csa-time-slot .csa-appointment-actions {
+    display: flex;
+    gap: 18px;
+}
 .csa-time-slot-info {
     flex: 1;
     margin: 0 15px;
@@ -266,11 +311,11 @@ body::after {
 
 .csa-time-slot-status {
     display: inline-block;
-    padding: 0.25em 0.8333em;
     border-radius: 3px;
     font-size: 0.75rem;
     font-weight: 500;
     text-transform: uppercase;
+    margin: 0.5em 0 0.75em;
 }
 
 .csa-time-slot-status.pending {
