@@ -64,6 +64,7 @@ class Shortcodes {
      * @return void
      */
     public static function enqueue_scripts() {
+        wp_enqueue_style(self::SCRIPT_HANDLE . '-styles', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/frontend.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
         wp_enqueue_script(self::SCRIPT_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/appointment-shortcode.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
         wp_script_add_data(self::SCRIPT_HANDLE, 'type', 'module');
         wp_localize_script(self::SCRIPT_HANDLE, self::JS_OBJECT, [

@@ -69,13 +69,14 @@ class AppointmentField {
             }
             $html .= '</ul>';
             if (!empty($elementor_prop)) {
-                $prop_name = 'form_fields[' . $elementor_prop . ']';
-                $html .= '<input type="hidden" name="' . esc_attr($prop_name) . '" id="' . esc_attr($elementor_prop) . '" class="csa-elementor-prop-hidden" value="" />';
+                $prop_key = 'csa-field-' . $elementor_prop;
+                $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-elementor-prop-hidden" value="" />';
             }
             $html .= '</div>';
         } else {
             $html .= '<div class="csa-appointment-calendar">';
             $html .= '<div class="csa-calendar-widget"></div>';
+            $html .= '<div class="csa-time-notification">Select A Service And Date To See Available Times.</div>';
             $html .= '<div class="csa-field csa-field-time">';
             $html .= '<label>' . esc_html__('Time', $text_domain) . '</label>';
             $html .= '<select name="appointment_time_select" class="csa-appointment-time-select"><option value="">' . esc_html__('Select a day first', $text_domain) . '</option></select>';
@@ -83,8 +84,8 @@ class AppointmentField {
             $html .= '<input type="hidden" name="appointment_date" class="csa-appointment-date-hidden" value="" />';
             $html .= '<input type="hidden" name="appointment_time" class="csa-appointment-time-hidden" value="" />';
             if (!empty($elementor_prop)) {
-                $prop_name = 'form_fields[' . $elementor_prop . ']';
-                $html .= '<input type="hidden" name="' . esc_attr($prop_name) . '" id="' . esc_attr($elementor_prop) . '" class="csa-appointment-composite-hidden" value="" />';
+                $prop_key = 'csa-field-' . $elementor_prop;
+                $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-appointment-composite-hidden" value="" />';
             }
             $html .= '</div>';
         }

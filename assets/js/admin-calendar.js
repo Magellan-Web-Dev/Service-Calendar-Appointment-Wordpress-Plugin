@@ -627,8 +627,8 @@ export class AdminCalendar {
             modalDate: qs('#csa-modal-date'),
             modalTimezone: qs('#csa-modal-timezone'),
             timezoneLabel: this.config.timezone_label || '',
+            serviceDurationMap: this.config.services_duration_map || {},
         });
-
         document.dispatchEvent(new CustomEvent('csa:dayRendered', { detail: data }));
     }
 

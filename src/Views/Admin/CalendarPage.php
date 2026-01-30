@@ -36,7 +36,7 @@ class CalendarPage {
         <div class="wrap">
             <h1><?php echo esc_html__($label, $text_domain); ?></h1>
             <div class="notice notice-info inline"><p style="font-weight: 600"><?php esc_html_e('Note: Appointments older than 3 months are automatically deleted daily by the system.', $text_domain); ?></p></div>
-            <p style="width: min(120ch, 100%);"><?php esc_html_e('To add appointment fields, use the shortcode [csa_appointment_field] inside an HTML/Raw HTML field (Elementor) or any content area that supports shortcodes. Use attributes type=\"services\" or type=\"time\" and elementor_prop=\"field_id\" for hidden field syncing.', $text_domain); ?></p>
+            <p style="width: min(120ch, 100%);"><?php esc_html_e('To add appointment fields on the frontend, use the shortcode [csa_appointment_field] inside an HTML/Raw HTML field or any content area that supports shortcodes. Use attributes type="services" or type="time" and elementor_prop="field_id" for Elementor Pro form field syncing.', $text_domain); ?></p>
 
             <div class="csa-calendar-wrapper">
                 <div class="csa-calendar-header">

@@ -4,7 +4,7 @@ const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const getElementorPropTarget = (form, prop) => {
-    if (!form || !prop) {
+    if (!prop) {
         return null;
     }
 
@@ -14,14 +14,35 @@ const getElementorPropTarget = (form, prop) => {
     }
 
     const name = `form_fields[${prop}]`;
-    return qs(`.elementor-field-group:not(.elementor-field-type-html) [name="${name}"]`, form);
+    if (form) {
+        const scoped = qs(`.elementor-field-group:not(.elementor-field-type-html) [name="${name}"]`, form);
+        if (scoped) {
+            return scoped;
+        }
+    }
+    return qs(`[name="${name}"]`, document);
 };
 
 const setElementorPropValue = (form, prop, value) => {
+    if (!prop) {
+        return;
+    }
+    const hiddenId = `csa-field-${prop}`;
+    const hidden = document.getElementById(hiddenId);
+    if (hidden) {
+        hidden.value = value;
+    }
     const target = getElementorPropTarget(form, prop);
     if (target) {
         target.value = value;
     }
+};
+
+const formatPropValue = (type, value) => {
+    if (!value) {
+        return '';
+    }
+    return `csa::${type} --> ${value}`;
 };
 
 const clearElementorPropValue = (form, prop) => {
@@ -77,7 +98,7 @@ class ServiceShortcode {
         }
 
         if (this.prop) {
-            setElementorPropValue(this.form, this.prop, title);
+            setElementorPropValue(this.form, this.prop, formatPropValue('service', title));
         }
     }
 }
@@ -89,7 +110,10 @@ class TimeShortcode {
         this.form = container.closest('form');
         this.prop = container.dataset.elementorProp || '';
         this.calendar = qs('.csa-calendar-widget', container);
+        this.calendarWrapper = qs('.csa-appointment-calendar', container);
+        this.timeNotification = qs('.csa-time-notification', container);
         this.timeSelect = qs('.csa-appointment-time-select', container);
+        this.timeField = qs('.csa-field-time', container);
         this.hiddenDate = qs('.csa-appointment-date-hidden', container);
         this.hiddenTime = qs('.csa-appointment-time-hidden', container);
         this.composite = qs('.csa-appointment-composite-hidden', container);
@@ -116,7 +140,9 @@ class TimeShortcode {
 
         this.renderCalendar();
         this.loadAvailableDays();
+        this.updateCalendarDisabledState();
         this.updateTimeSelectState('Select a day first', true);
+        this.updateTimeNotificationState();
     }
 
     getDurationSeconds() {
@@ -138,6 +164,9 @@ class TimeShortcode {
         }
         this.timeSelect.innerHTML = html;
         this.timeSelect.disabled = !!disabled;
+        if (this.timeField) {
+            this.timeField.classList.toggle('csa-field-disabled', !!disabled);
+        }
     }
 
     resetSelection() {
@@ -154,13 +183,18 @@ class TimeShortcode {
         if (this.prop) {
             clearElementorPropValue(this.form, this.prop);
         }
+        this.updateCalendarDisabledState();
         this.updateTimeSelectState('Select a day first', true);
+        this.updateTimeNotificationState();
     }
 
     renderCalendar() {
         if (!this.calendar) {
             return;
         }
+
+        const today = new Date();
+        const isCurrentMonth = this.currentYear === today.getFullYear() && this.currentMonth === today.getMonth();
 
         const firstDay = new Date(this.currentYear, this.currentMonth, 1);
         const lastDay = new Date(this.currentYear, this.currentMonth + 1, 0);
@@ -203,7 +237,14 @@ class TimeShortcode {
         const prev = qs('.csa-prev-month', this.calendar);
         const next = qs('.csa-next-month', this.calendar);
         if (prev) {
-            on(prev, 'click', () => this.changeMonth(-1));
+            if (isCurrentMonth) {
+                prev.style.visibility = 'hidden';
+                prev.setAttribute('disabled', 'disabled');
+            } else {
+                prev.style.visibility = '';
+                prev.removeAttribute('disabled');
+                on(prev, 'click', () => this.changeMonth(-1));
+            }
         }
         if (next) {
             on(next, 'click', () => this.changeMonth(1));
@@ -214,7 +255,30 @@ class TimeShortcode {
         });
     }
 
+    updateCalendarDisabledState() {
+        if (!this.calendarWrapper) {
+            return;
+        }
+        const durationSeconds = this.getDurationSeconds();
+        const disabled = !durationSeconds;
+        this.calendarWrapper.classList.toggle('csa-field-disabled', disabled);
+    }
+
+    updateTimeNotificationState() {
+        if (!this.timeNotification) {
+            return;
+        }
+        const hasService = this.getDurationSeconds() > 0;
+        const hasDate = !!this.selectedDate;
+        const active = hasService && !hasDate;
+        this.timeNotification.classList.toggle('csa-time-notification-active', active);
+    }
+
     changeMonth(delta) {
+        const today = new Date();
+        const minMonth = today.getMonth();
+        const minYear = today.getFullYear();
+
         this.currentMonth += delta;
         if (this.currentMonth < 0) {
             this.currentMonth = 11;
@@ -224,6 +288,12 @@ class TimeShortcode {
             this.currentMonth = 0;
             this.currentYear += 1;
         }
+
+        if (this.currentYear < minYear || (this.currentYear === minYear && this.currentMonth < minMonth)) {
+            this.currentYear = minYear;
+            this.currentMonth = minMonth;
+        }
+
         this.selectedDate = '';
         if (this.hiddenDate) {
             this.hiddenDate.value = '';
@@ -247,6 +317,8 @@ class TimeShortcode {
             this.availableDays = new Set();
             this.renderCalendar();
             this.updateTimeSelectState('Select a service first', true);
+            this.updateCalendarDisabledState();
+            this.updateTimeNotificationState();
             return;
         }
 
@@ -268,6 +340,8 @@ class TimeShortcode {
         }
 
         this.renderCalendar();
+        this.updateCalendarDisabledState();
+        this.updateTimeNotificationState();
     }
 
     async selectDate(dateString) {
@@ -290,6 +364,7 @@ class TimeShortcode {
         }
 
         this.renderCalendar();
+        this.updateTimeNotificationState();
         await this.loadTimes(dateString);
     }
 
@@ -319,6 +394,9 @@ class TimeShortcode {
                     });
                     this.timeSelect.innerHTML = html;
                     this.timeSelect.disabled = false;
+                    if (this.timeField) {
+                        this.timeField.classList.remove('csa-field-disabled');
+                    }
                 }
             } else {
                 this.updateTimeSelectState('Error loading times', true);
@@ -343,7 +421,7 @@ class TimeShortcode {
             this.composite.value = composite;
         }
         if (this.prop) {
-            setElementorPropValue(this.form, this.prop, composite);
+            setElementorPropValue(this.form, this.prop, formatPropValue('time', composite));
         }
     }
 

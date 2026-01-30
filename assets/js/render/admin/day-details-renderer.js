@@ -10,12 +10,17 @@ export class AdminDayDetailsRenderer {
      * @param {HTMLElement|null} options.modalDate
      * @param {HTMLElement|null} options.modalTimezone
      * @param {string} [options.timezoneLabel]
+     * @param {Object} [options.serviceDurationMap]
      * @returns {void}
      */
-    static render({ data, timeSlots, modalDate, modalTimezone, timezoneLabel }) {
+    static render({ data, timeSlots, modalDate, modalTimezone, timezoneLabel, serviceDurationMap }) {
         if (!data) {
             return;
         }
+
+        const durationMap = normalizeDurationMap(serviceDurationMap || {});
+        const occupiedTimes = buildOccupiedTimes(data.time_slots || [], durationMap);
+        applyAppointmentDurations(data.time_slots || [], durationMap);
 
         const formattedDate = new Date(`${data.date}T00:00:00`).toLocaleDateString('en-US', {
             weekday: 'long',
@@ -46,27 +51,48 @@ export class AdminDayDetailsRenderer {
             controls.innerHTML = '<button id="csa-block-all" class="csa-btn">Block All</button> ' +
                 '<button id="csa-unblock-all" class="csa-btn">Unblock All</button>';
             timeSlots.insertAdjacentElement('beforebegin', controls);
-
-            const slotsHtml = (data.time_slots || []).map((slot) => renderSlot(slot, data.date)).join('');
+            const slotsHtml = (data.time_slots || [])
+                .map((slot) => renderSlot(slot, data.date, occupiedTimes))
+                .join('');
             timeSlots.innerHTML = slotsHtml;
         }
     }
 }
 
-const renderSlot = (slot, date) => {
-    const timeFormatted = formatTime(slot.time);
+const renderSlot = (slot, date, occupiedTimes) => {
+    if (slot.is_occupied) {
+        return '';
+    }
+        if (!slot.appointments && occupiedTimes && occupiedTimes.has(slot.time)) {
+            return '';
+        }
+    const timeFormatted = safeFormatTime(slot.time);
+    let rangeLabel = timeFormatted;
     let slotClass = '';
     let statusHtml = '';
     let actionsHtml = '';
 
-    if (slot.appointments && slot.appointments.length > 0) {
+    if (slot.appointments) {
         slotClass = 'booked';
-        const first = slot.appointments[0];
+        const first = slot.appointments;
+        const serviceLabel = first.service || '';
+        const createdLabel = first.created_at ? formatTimestamp(first.created_at) : '';
+        const startRaw = first.time || slot.time;
+        const startLabel = safeFormatTime(startRaw);
+        let endLabel = safeFormatTime(first.end_time);
+        if (!endLabel && first.duration_seconds && startRaw) {
+            endLabel = safeFormatTime(addMinutesToTime(startRaw, Math.round(first.duration_seconds / 60)));
+        }
+        rangeLabel = startLabel && endLabel ? `${startLabel} - ${endLabel}` : (startLabel || timeFormatted);
         statusHtml = '<div class="csa-time-slot-info">' +
             `<div class="csa-time-slot-customer">${first.name || ''}</div>` +
             '<div class="csa-time-slot-contact">' +
             `${first.email || ''}${first.phone ? ` | ${first.phone}` : ''}` +
             '</div>' +
+            '</div>' +
+            `<div class="csa-time-slot-meta">` +
+            `${serviceLabel ? `<div class="csa-time-slot-service"><strong>Service:</strong> ${serviceLabel}</div>` : ''}` +
+            `${createdLabel ? `<div class="csa-time-slot-created"><strong>Submitted:</strong> ${createdLabel}</div>` : ''}` +
             '</div>' +
             `<span class="csa-time-slot-status ${first.status || 'booked'}">${first.status || 'booked'}</span>`;
         actionsHtml = `<button class="csa-btn csa-btn-view" data-time="${slot.time}">View</button>`;
@@ -84,13 +110,13 @@ const renderSlot = (slot, date) => {
     }
 
     let appointmentListHtml = '';
-    if (slot.appointments && slot.appointments.length > 0) {
-        const listItems = slot.appointments.map((appt) => renderAppointment(appt, date)).join('');
-        appointmentListHtml = `<div class="csa-appointment-list" style="display:none;">${listItems}</div>`;
+    if (slot.appointments) {
+        const listItem = renderAppointment(slot.appointments, date);
+        appointmentListHtml = `<div class="csa-appointment-list" style="display:none;">${listItem}</div>`;
     }
 
     return `<div class="csa-time-slot ${slotClass}" data-time="${slot.time}">` +
-        `<div class="csa-time-slot-time">${timeFormatted}</div>` +
+        `<div class="csa-time-slot-time">${slotClass === 'booked' ? rangeLabel : timeFormatted}</div>` +
         statusHtml +
         `<div class="csa-time-slot-actions">${actionsHtml}</div>` +
         appointmentListHtml +
@@ -98,14 +124,18 @@ const renderSlot = (slot, date) => {
 };
 
 const renderAppointment = (appt, date) => {
-    let metaHtml = appt.created_at ? `${appt.created_at}` : '';
+    let metaHtml = '';
     if (appt.id) {
         metaHtml += ` - <a href="admin.php?page=e-form-submissions&action=view&id=${appt.id}" target="_blank">Open submission</a>`;
     }
 
     let allDataHtml = '';
     if (appt.all_data && Object.keys(appt.all_data).length > 0) {
-        const fields = Object.keys(appt.all_data)
+        const keys = Object.keys(appt.all_data);
+        const serviceKeys = keys.filter((key) => isServiceField(key));
+        const otherKeys = keys.filter((key) => !isServiceField(key) && !isTimeField(key));
+        const ordered = [...serviceKeys, ...otherKeys];
+        const fields = ordered
             .map((key) => `<div class="csa-appointment-field"><strong>${formatFieldLabel(key)}:</strong> ${appt.all_data[key] || ''}</div>`)
             .join('');
         allDataHtml = `<div class="csa-appointment-all-data">${fields}</div>`;
@@ -145,4 +175,227 @@ const formatFieldLabel = (key) => {
         .split(' ')
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
+};
+
+const normalizeKey = (key) => {
+    return key.toLowerCase().replace(/\\s+/g, '').replace(/[_-]+/g, '');
+};
+
+const isServiceField = (key) => {
+    if (!key) {
+        return false;
+    }
+    if (key === 'csa_service') {
+        return true;
+    }
+    const normalized = normalizeKey(key);
+    return normalized.includes('service');
+};
+
+const isTimeField = (key) => {
+    if (!key) {
+        return false;
+    }
+    const normalized = normalizeKey(key);
+    if (normalized.includes('appointment') && normalized.includes('time')) {
+        return true;
+    }
+    if (normalized.includes('appointment') && normalized.includes('date')) {
+        return true;
+    }
+    if (normalized.includes('time') && normalized.includes('slot')) {
+        return true;
+    }
+    if (normalized === 'time' || normalized.endsWith('time')) {
+        return true;
+    }
+    return false;
+};
+
+const formatTimestamp = (value) => {
+    if (!value) {
+        return '';
+    }
+    const date = new Date(value.replace(' ', 'T'));
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+};
+
+const safeFormatTime = (value) => {
+    if (!value || typeof value !== 'string') {
+        return '';
+    }
+    const normalized = value.trim();
+    if (!normalized) {
+        return '';
+    }
+    const timePart = normalized.includes('T') ? normalized.split('T')[1] : normalized;
+    return formatTime(timePart.slice(0, 5));
+};
+
+const addMinutesToTime = (value, minutesToAdd) => {
+    if (!value || typeof value !== 'string' || !Number.isFinite(minutesToAdd)) {
+        return '';
+    }
+    const normalized = value.trim();
+    const timePart = normalized.includes('T') ? normalized.split('T')[1] : normalized;
+    const pieces = timePart.split(':');
+    if (pieces.length < 2) {
+        return '';
+    }
+    const hours = parseInt(pieces[0], 10);
+    const minutes = parseInt(pieces[1], 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+        return '';
+    }
+    const total = hours * 60 + minutes + minutesToAdd;
+    const nextHours = Math.floor(total / 60);
+    const nextMinutes = total % 60;
+    return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
+};
+
+const applyAppointmentDurations = (timeSlots, serviceDurationMap) => {
+    timeSlots.forEach((slot) => {
+        if (!slot.appointments) {
+            return;
+        }
+        const appt = slot.appointments;
+        if (!appt || appt.duration_seconds) {
+            return;
+        }
+        const duration = getAppointmentDurationSeconds(appt, serviceDurationMap);
+        if (duration > 0) {
+            appt.duration_seconds = duration;
+            if (!appt.end_time) {
+                const start = appt.time || slot.time;
+                if (start) {
+                    appt.end_time = addMinutesToTime(start, Math.round(duration / 60));
+                }
+            }
+        }
+    });
+};
+
+const buildOccupiedTimes = (timeSlots, serviceDurationMap) => {
+    const occupied = new Set();
+    timeSlots.forEach((slot) => {
+        if (!slot.appointments) {
+            return;
+        }
+        const appt = slot.appointments;
+        const duration = getAppointmentDurationSeconds(appt, serviceDurationMap);
+        if (!duration) {
+            return;
+        }
+        const slotsNeeded = Math.ceil(duration / 1800);
+        const start = appt.time || slot.time;
+        for (let i = 1; i <= slotsNeeded; i += 1) {
+            const next = addMinutesToTime(start, 30 * i);
+            if (next) {
+                occupied.add(next);
+            }
+        }
+    });
+    return occupied;
+};
+
+const getAppointmentDurationSeconds = (appointment, serviceDurationMap) => {
+    if (!appointment) {
+        return 0;
+    }
+    if (appointment.duration_seconds && !Number.isNaN(Number(appointment.duration_seconds))) {
+        return Number(appointment.duration_seconds);
+    }
+    if (appointment.service) {
+        const serviceTitle = normalizeServiceTitle(appointment.service);
+        if (serviceTitle && serviceDurationMap[serviceTitle]) {
+            return Number(serviceDurationMap[serviceTitle]);
+        }
+    }
+    if (appointment.all_data && typeof appointment.all_data === 'object') {
+        if (appointment.all_data.csa_service) {
+            const serviceTitle = normalizeServiceTitle(appointment.all_data.csa_service);
+            if (serviceTitle && serviceDurationMap[serviceTitle]) {
+                return Number(serviceDurationMap[serviceTitle]);
+            }
+        }
+        for (const value of Object.values(appointment.all_data)) {
+            const serviceTitle = extractServiceFromValue(value);
+            if (serviceTitle && serviceDurationMap[serviceTitle]) {
+                return Number(serviceDurationMap[serviceTitle]);
+            }
+            const maybeDuration = extractDurationSeconds(value);
+            if (maybeDuration) {
+                return maybeDuration;
+            }
+        }
+    }
+    return 0;
+};
+
+const normalizeServiceTitle = (value) => {
+    if (!value || typeof value !== 'string') {
+        return '';
+    }
+    let cleaned = value.trim();
+    if (!cleaned) {
+        return '';
+    }
+    if (cleaned.toLowerCase().startsWith('csa::service') && cleaned.includes('-->')) {
+        cleaned = cleaned.split('-->')[1].trim();
+    } else if (cleaned.includes('-->')) {
+        cleaned = cleaned.split('-->')[1].trim();
+    }
+    return normalizeKey(cleaned);
+};
+
+const extractServiceFromValue = (value) => {
+    if (!value || typeof value !== 'string') {
+        return '';
+    }
+    const cleaned = value.trim();
+    if (!cleaned) {
+        return '';
+    }
+    if (cleaned.toLowerCase().startsWith('csa::service') && cleaned.includes('-->')) {
+        return normalizeKey(cleaned.split('-->')[1].trim());
+    }
+    return '';
+};
+
+const extractDurationSeconds = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value > 0 ? value : 0;
+    }
+    if (!value || typeof value !== 'string') {
+        return 0;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return 0;
+    }
+    if (/^\\d+$/.test(trimmed)) {
+        const parsed = Number(trimmed);
+        return parsed > 0 ? parsed : 0;
+    }
+    return 0;
+};
+
+const normalizeDurationMap = (map) => {
+    const normalized = {};
+    Object.keys(map || {}).forEach((key) => {
+        const normalizedKey = normalizeKey(key);
+        if (normalizedKey) {
+            normalized[normalizedKey] = Number(map[key]);
+        }
+    });
+    return normalized;
 };

@@ -160,8 +160,10 @@ body::after {
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     max-width: 800px;
     width: 90%;
-    max-height: 80vh;
-    overflow: auto;
+    overflow: hidden;
+    max-height: 100%;
+    display:flex;
+    flex-direction: column;
 }
 
 .csa-modal-header {
@@ -214,6 +216,18 @@ body::after {
     border: 1px solid #ddd;
     border-radius: 4px;
     background: #fff;
+}
+
+.csa-time-slot-meta {
+    margin-left: auto;
+    text-align: right;
+    font-size: 12px;
+    color: #555;
+}
+
+.csa-time-slot-service,
+.csa-time-slot-created {
+    margin-bottom: 2px;
 }
 
 /* When a slot has appointments, stack content vertically so accordion expands downward */
@@ -442,4 +456,14 @@ p, .csa-appointment-field {
 
 h2 {
     margin-top: 2.5em;
+}
+
+#csa-time-slots {
+    overflow: auto;
+    max-height: 75dvh;
+}
+
+.csa-day-controls {
+    padding-bottom: 15px;
+    border-bottom: 1px solid #ddd;
 }

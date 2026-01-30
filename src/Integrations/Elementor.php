@@ -64,6 +64,7 @@ class Elementor {
 
         // Listen for saved submissions to persist composite appointment strings
         add_action('elementor_pro/forms/new_record', [$this, 'handle_new_record']);
+        add_action('elementor_pro/forms/validation', [$this, 'validate_appointment_form'], 10, 2);
 
         if (defined('WP_DEBUG') && WP_DEBUG) {
             error_log('[CSA] Elementor::__construct called');
@@ -227,6 +228,20 @@ class Elementor {
             return;
         }
 
+        if (empty($appointment_date)) {
+            $appointment_date = $this->get_field_value($raw_fields, 'appointment_date');
+        }
+        if (empty($appointment_time)) {
+            $appointment_time = $this->get_field_value($raw_fields, 'appointment_time');
+        }
+        if (empty($appointment_date) || empty($appointment_time)) {
+            $parsed = $this->parse_composite_datetime($this->extract_prop_value($raw_fields, 'time'));
+            if ($parsed) {
+                $appointment_date = $parsed['date'];
+                $appointment_time = $parsed['time'];
+            }
+        }
+
         if (empty($appointment_date) || empty($appointment_time)) {
             $ajax_handler->add_error_message(__('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
             return;
@@ -237,11 +252,18 @@ class Elementor {
             $appointment_time .= ':00';
         }
 
+        $service_title = $this->extract_prop_value($raw_fields, 'service');
+        $duration_seconds = $this->get_service_duration_seconds($service_title);
+        if ($duration_seconds <= 0) {
+            $ajax_handler->add_error_message(__('Please select a valid service before booking.', self::TEXT_DOMAIN));
+            return;
+        }
+
         $db = Database::get_instance();
 
         // Use a DB-level named lock to reduce race conditions between concurrent submissions.
         global $wpdb;
-        $lock_name = 'csa_reserve_' . $appointment_date . '_' . str_replace(':', '-', $appointment_time);
+        $lock_name = 'csa_reserve_' . $appointment_date . '_' . str_replace(':', '-', $appointment_time) . '_' . $duration_seconds;
         $got_lock = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, %d)", $lock_name, 5));
 
         if (! $got_lock) {
@@ -249,23 +271,20 @@ class Elementor {
             return;
         }
 
-        // Re-check under lock
-        if ($db->is_slot_blocked($appointment_date, $appointment_time)) {
+        $slots = $this->build_slot_times($appointment_time, $duration_seconds);
+        if (empty($slots)) {
             $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
             $ajax_handler->add_error_message(__('This current time slot has already been taken, please select another.', self::TEXT_DOMAIN));
             return;
         }
 
-        $submissions = Submissions::get_instance();
-        if ($submissions->is_slot_booked($appointment_date, $appointment_time)) {
+        if (! $this->is_time_range_available($appointment_date, $slots, $db, Submissions::get_instance())) {
             $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
-            $ajax_handler->add_error_message(__('This current time slot has already been taken, please select another.', self::TEXT_DOMAIN));
+            $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
             return;
         }
 
-        // Attempt to reserve (insert a blocked slot row). If insert fails, someone else reserved it.
-        $reserved = $db->reserve_time_slot($appointment_date, $appointment_time);
-        // Release the lock regardless
+        $reserved = $this->reserve_time_range($appointment_date, $slots, $db);
         $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 
         if (! $reserved) {
@@ -274,6 +293,62 @@ class Elementor {
         }
 
         // If we reach here, the appointment is reserved and valid. Elementor will save the submission.
+    }
+
+    /**
+     * Validate appointment date/time on submit.
+     *
+     * @param object $record
+     * @param object $ajax_handler
+     * @return void
+     */
+    public function validate_appointment_form($record, $ajax_handler) {
+        try {
+            $raw_fields = $record->get('fields');
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        $raw_fields = $this->sanitize_prefixed_props($raw_fields);
+        if (method_exists($record, 'set')) {
+            $record->set('fields', $raw_fields);
+        }
+
+        $appointment_date = $this->get_field_value($raw_fields, 'appointment_date');
+        $appointment_time = $this->get_field_value($raw_fields, 'appointment_time');
+        if (empty($appointment_date) || empty($appointment_time)) {
+            $parsed = $this->parse_composite_datetime($this->extract_prop_value($raw_fields, 'time'));
+            if ($parsed) {
+                $appointment_date = $parsed['date'];
+                $appointment_time = $parsed['time'];
+            }
+        }
+        if (empty($appointment_date) || empty($appointment_time)) {
+            return;
+        }
+
+        $service_title = $this->extract_prop_value($raw_fields, 'service');
+        $duration_seconds = $this->get_service_duration_seconds($service_title);
+        if ($duration_seconds <= 0) {
+            $ajax_handler->add_error_message(__('Please select a valid service before booking.', self::TEXT_DOMAIN));
+            return;
+        }
+
+        if (strlen($appointment_time) === 5) {
+            $appointment_time .= ':00';
+        }
+
+        $slots = $this->build_slot_times($appointment_time, $duration_seconds);
+        if (empty($slots)) {
+            $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            return;
+        }
+
+        $db = Database::get_instance();
+        $submissions = Submissions::get_instance();
+        if (! $this->is_time_range_available($appointment_date, $slots, $db, $submissions)) {
+            $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+        }
     }
 
     /**
@@ -294,6 +369,11 @@ class Elementor {
             return;
         }
 
+        $raw_fields = $this->sanitize_prefixed_props($raw_fields);
+        if (method_exists($record, 'set')) {
+            $record->set('fields', $raw_fields);
+        }
+
         // Attempt to obtain submission ID
         $submission_id = null;
         if (method_exists($record, 'get_id')) {
@@ -309,10 +389,35 @@ class Elementor {
 
         $db = \CalendarServiceAppointmentsForm\Core\Database::get_instance();
 
+        $found_any = false;
+        $appointment_date = $this->get_field_value($raw_fields, 'appointment_date');
+        $appointment_time = $this->get_field_value($raw_fields, 'appointment_time');
+
+        if (!empty($appointment_date) && !empty($appointment_time)) {
+            $found_any = true;
+            $date = $appointment_date;
+            $time = strlen($appointment_time) === 5 ? $appointment_time : substr($appointment_time, 0, 5);
+
+            $submission_data = $this->build_submission_data($raw_fields);
+            $service_title = $this->extract_prop_value($raw_fields, 'service');
+            if ($service_title !== '') {
+                $submission_data['csa_service'] = $service_title;
+            }
+            $insert_id = $db->insert_appointment($submission_id, $date, $time, $submission_data);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                if ($insert_id === false) {
+                    global $wpdb;
+                    error_log('[CSA] insert_appointment FAILED for submission ' . var_export($submission_id, true) . ' date=' . $date . ' time=' . $time . ' error=' . $wpdb->last_error);
+                } else {
+                    error_log('[CSA] insert_appointment succeeded id=' . intval($insert_id) . ' for submission ' . var_export($submission_id, true) . ' date=' . $date . ' time=' . $time);
+                }
+            }
+            return;
+        }
+
         // Regex tolerant of formats like "December 25, 2025 - 12:00PM" or with space before AM/PM
         $regex = '/([A-Za-z]+\s+\d{1,2},\s+\d{4})\s*-\s*(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))/i';
 
-        $found_any = false;
         foreach ($raw_fields as $field) {
             $value = '';
             if (is_array($field) && isset($field['value'])) {
@@ -351,31 +456,10 @@ class Elementor {
                 }
                 $time = date('H:i', $time_ts);
 
-                // Build submission data JSON (exclude empty values)
-                $submission_data = [];
-                foreach ($raw_fields as $field) {
-                    $key = null;
-                    $val = null;
-                    if (is_array($field)) {
-                        if (!empty($field['name'])) {
-                            $key = $field['name'];
-                        } elseif (!empty($field['id'])) {
-                            $key = $field['id'];
-                        }
-                        if (isset($field['value'])) { $val = $field['value']; }
-                    } elseif (is_string($field)) {
-                        // no key available, skip
-                        continue;
-                    }
-
-                    if ($key === null) { continue; }
-                    if (is_array($val)) {
-                        $flat = implode(', ', array_filter($val, function($v){ return $v !== null && $v !== ''; }));
-                        $val = $flat;
-                    }
-                    $val = is_string($val) ? trim($val) : $val;
-                    if ($val === '' || $val === null) { continue; }
-                    $submission_data[$key] = $val;
+                $submission_data = $this->build_submission_data($raw_fields);
+                $service_title = $this->extract_prop_value($raw_fields, 'service');
+                if ($service_title !== '') {
+                    $submission_data['csa_service'] = $service_title;
                 }
 
                 // Insert appointment row (store submission_data JSON)
@@ -394,5 +478,292 @@ class Elementor {
         if (defined('WP_DEBUG') && WP_DEBUG && ! $found_any) {
             error_log('[CSA] handle_new_record found no composite appointment values for submission ' . var_export($submission_id, true));
         }
+    }
+
+    /**
+     * Extract a named field value from Elementor fields.
+     *
+     * @param array $raw_fields
+     * @param string $name
+     * @return string
+     */
+    private function get_field_value($raw_fields, $name) {
+        foreach ($raw_fields as $field) {
+            if (is_array($field) && isset($field['name']) && $field['name'] === $name) {
+                return is_string($field['value']) ? trim($field['value']) : '';
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Extract a prefixed prop value (csa::service --> value, csa::time --> value).
+     *
+     * @param array $raw_fields
+     * @param string $type
+     * @return string
+     */
+    private function extract_prop_value($raw_fields, $type) {
+        $prefix = 'csa::' . $type;
+        foreach ($raw_fields as $field) {
+            $value = '';
+            if (is_array($field) && isset($field['value'])) {
+                $value = trim((string) $field['value']);
+            } elseif (is_string($field)) {
+                $value = trim($field);
+            }
+            if ($value === '') {
+                continue;
+            }
+            if (stripos($value, $prefix) === 0 && strpos($value, '-->') !== false) {
+                $parts = explode('-->', $value, 2);
+                if (isset($parts[1])) {
+                    return trim($parts[1]);
+                }
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Parse a composite datetime string (e.g. "December 25, 2025 - 12:00PM").
+     *
+     * @param string $value
+     * @return array|null
+     */
+    private function parse_composite_datetime($value) {
+        if (!$value) {
+            return null;
+        }
+        $regex = '/([A-Za-z]+\\s+\\d{1,2},\\s+\\d{4})\\s*-\\s*(\\d{1,2}:\\d{2}\\s*(?:AM|PM|am|pm))/i';
+        if (!preg_match($regex, $value, $m)) {
+            return null;
+        }
+        $ts = strtotime($m[1]);
+        $time_ts = strtotime($m[2]);
+        if ($ts === false || $time_ts === false) {
+            return null;
+        }
+        return [
+            'date' => date('Y-m-d', $ts),
+            'time' => date('H:i', $time_ts),
+        ];
+    }
+
+    /**
+     * Strip CSA prefix markers from prop values before submission handling.
+     *
+     * @param array $raw_fields
+     * @return array
+     */
+    private function sanitize_prefixed_props($raw_fields) {
+        $prefixes = ['csa::service', 'csa::time'];
+        foreach ($raw_fields as $idx => $field) {
+            if (!is_array($field) || !isset($field['value'])) {
+                continue;
+            }
+            $value = trim((string) $field['value']);
+            if ($value === '' || strpos($value, '-->') === false) {
+                continue;
+            }
+            foreach ($prefixes as $prefix) {
+                if (stripos($value, $prefix) === 0) {
+                    $parts = explode('-->', $value, 2);
+                    $clean = isset($parts[1]) ? trim($parts[1]) : '';
+                    $raw_fields[$idx]['value'] = $clean;
+                    break;
+                }
+            }
+        }
+        return $raw_fields;
+    }
+
+    /**
+     * Build submission data JSON (exclude empty values).
+     *
+     * @param array $raw_fields
+     * @return array
+     */
+    private function build_submission_data($raw_fields) {
+        $submission_data = [];
+        foreach ($raw_fields as $field) {
+            $key = null;
+            $val = null;
+            if (is_array($field)) {
+                if (!empty($field['name'])) {
+                    $key = $field['name'];
+                } elseif (!empty($field['id'])) {
+                    $key = $field['id'];
+                }
+                if (isset($field['value'])) { $val = $field['value']; }
+            } elseif (is_string($field)) {
+                continue;
+            }
+
+            if ($key === null) { continue; }
+            if (is_array($val)) {
+                $flat = implode(', ', array_filter($val, function($v){ return $v !== null && $v !== ''; }));
+                $val = $flat;
+            }
+            $val = is_string($val) ? trim($val) : $val;
+            if ($val === '' || $val === null) { continue; }
+            $submission_data[$key] = $val;
+        }
+        return $submission_data;
+    }
+
+    /**
+     * Get duration seconds for a service title.
+     *
+     * @param string $service_title
+     * @return int
+     */
+    private function get_service_duration_seconds($service_title) {
+        if ($service_title === '') {
+            return 0;
+        }
+        $db = Database::get_instance();
+        $services = $db->get_services();
+        foreach ($services as $service) {
+            if (!is_array($service)) {
+                continue;
+            }
+            $title = isset($service['title']) ? (string) $service['title'] : '';
+            if ($title === $service_title) {
+                $duration = isset($service['duration']) ? (string) $service['duration'] : '';
+                if (ctype_digit($duration)) {
+                    return (int) $duration;
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Get business hours (30-minute increments).
+     *
+     * @return array
+     */
+    private function get_business_hours() {
+        return [
+            '06:00', '06:30', '07:00', '07:30',
+            '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+            '11:00', '11:30', '12:00', '12:30', '13:00', '13:30',
+            '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
+            '17:00', '17:30',
+        ];
+    }
+
+    /**
+     * Build slot times for a duration (30-minute increments).
+     *
+     * @param string $start_time
+     * @param int $duration_seconds
+     * @return array
+     */
+    private function build_slot_times($start_time, $duration_seconds) {
+        $slots_needed = (int) ceil(max(0, (int) $duration_seconds) / 1800);
+        if ($slots_needed <= 0) {
+            return [];
+        }
+        $times = [];
+        $start = substr($start_time, 0, 5);
+        for ($i = 0; $i < $slots_needed; $i++) {
+            $slot_time = $i === 0 ? $start : $this->add_minutes($start, 30 * $i);
+            if (!$slot_time) {
+                return [];
+            }
+            $times[] = $slot_time;
+        }
+        return $times;
+    }
+
+    /**
+     * Add minutes to a HH:MM time.
+     *
+     * @param string $time
+     * @param int $minutes
+     * @return string|null
+     */
+    private function add_minutes($time, $minutes) {
+        $dt = \DateTime::createFromFormat('H:i', $time);
+        if (!$dt) {
+            return null;
+        }
+        $dt->modify('+' . intval($minutes) . ' minutes');
+        return $dt->format('H:i');
+    }
+
+    /**
+     * Check if all slots are available.
+     *
+     * @param string $date
+     * @param array $slots
+     * @param Database $db
+     * @param Submissions $submissions
+     * @return bool
+     */
+    private function is_time_range_available($date, $slots, $db, $submissions) {
+        $weekly = $db->get_weekly_availability();
+        $holiday_availability = $db->get_holiday_availability();
+        $dow = date('w', strtotime($date));
+        $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
+        $overrides = $db->get_overrides_for_date($date);
+        $holiday_key = \CalendarServiceAppointmentsForm\Core\Holidays::get_us_holiday_key_for_date($date);
+        $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
+        $holiday_closed = $holiday_key && !$holiday_enabled;
+
+        if ($holiday_closed) {
+            return false;
+        }
+
+        $hours_set = array_fill_keys($this->get_business_hours(), true);
+        foreach ($slots as $time) {
+            if (!isset($hours_set[$time])) {
+                return false;
+            }
+
+            $is_default_available = in_array($time, $default_hours, true);
+            if (isset($overrides[$time])) {
+                if ($overrides[$time] === 'allow') {
+                    $is_default_available = true;
+                } elseif ($overrides[$time] === 'block') {
+                    $is_default_available = false;
+                }
+            }
+
+            if (!$is_default_available) {
+                return false;
+            }
+
+            if ($db->is_slot_blocked($date, $time) || $submissions->is_slot_booked($date, $time)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Reserve all slots for a range.
+     *
+     * @param string $date
+     * @param array $slots
+     * @param Database $db
+     * @return bool
+     */
+    private function reserve_time_range($date, $slots, $db) {
+        $reserved = [];
+        foreach ($slots as $time) {
+            $ok = $db->reserve_time_slot($date, $time);
+            if (!$ok) {
+                foreach ($reserved as $t) {
+                    $db->unblock_time_slot($date, $t);
+                }
+                return false;
+            }
+            $reserved[] = $time;
+        }
+        return true;
     }
 }

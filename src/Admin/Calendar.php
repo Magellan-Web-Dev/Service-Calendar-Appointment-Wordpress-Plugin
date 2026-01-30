@@ -147,6 +147,18 @@ class Calendar {
             $holiday_availability = $db->get_holiday_availability();
             $holiday_list = Holidays::get_us_holidays_for_year((int) date('Y'));
             $timezone = $db->get_timezone_string();
+            $services = $db->get_services();
+            $service_duration_map = [];
+            foreach ($services as $service) {
+                if (!is_array($service)) {
+                    continue;
+                }
+                $title = isset($service['title']) ? trim((string) $service['title']) : '';
+                $duration = isset($service['duration']) ? (string) $service['duration'] : '';
+                if ($title !== '' && ctype_digit($duration)) {
+                    $service_duration_map[$title] = (int) $duration;
+                }
+            }
 
             wp_localize_script(self::SCRIPT_HANDLE, 'csaAdmin', [
                 'ajax_url' => admin_url('admin-ajax.php'),
@@ -157,6 +169,7 @@ class Calendar {
                 'hours' => $this->get_business_hours(),
                 'timezone' => $timezone,
                 'timezone_label' => $this->get_timezone_label($timezone),
+                'services_duration_map' => $service_duration_map,
             ]);
 
             return;

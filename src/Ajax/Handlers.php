@@ -63,6 +63,7 @@ class Handlers {
      */
     private function __construct() {
         add_action('wp_ajax_csa_get_day_details', [$this, 'get_day_details']);
+        add_action('wp_ajax_nopriv_csa_get_day_details', [$this, 'get_day_details']);
         add_action('wp_ajax_csa_delete_appointment', [$this, 'delete_appointment']);
         add_action('wp_ajax_csa_fetch_submission_values', [$this, 'fetch_submission_values']);
         add_action('wp_ajax_csa_block_time_slot', [$this, 'block_time_slot']);
@@ -86,84 +87,149 @@ class Handlers {
      * @return void
      */
     public function get_day_details() {
-        check_ajax_referer(self::NONCE_ACTION, 'nonce');
-
-        if (!current_user_can(self::CAPABILITY)) {
-            wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[CSA] get_day_details hit. action=' . (isset($_REQUEST['action']) ? $_REQUEST['action'] : 'none'));
         }
+        $prev_handler = set_error_handler(function ($severity, $message, $file, $line) {
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
 
-        $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
+        try {
+            if (!check_ajax_referer(self::NONCE_ACTION, 'nonce', false)) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[CSA] get_day_details invalid nonce.');
+                }
+                wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
+            }
 
-        if (empty($date)) {
-            wp_send_json_error(['message' => __('Invalid date', self::TEXT_DOMAIN)]);
-        }
+            if (!current_user_can(self::CAPABILITY)) {
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[CSA] get_day_details unauthorized.');
+                }
+                wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
+            }
 
-        $db = Database::get_instance();
-        $blocked_slots = $db->get_blocked_slots_for_date($date);
+            $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
 
-        $submissions = Submissions::get_instance();
-        $appointments = $submissions->get_appointments_for_date($date);
+            if (empty($date)) {
+                wp_send_json_error(['message' => __('Invalid date', self::TEXT_DOMAIN)]);
+            }
 
-        $db = Database::get_instance();
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
-        $dow = date('w', strtotime($date));
-        $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date);
-        $holiday_key = Holidays::get_us_holiday_key_for_date($date);
-        $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
-        $holiday_closed = $holiday_key && !$holiday_enabled;
+            $db = Database::get_instance();
+            $blocked_slots = $db->get_blocked_slots_for_date($date);
+            if (!is_array($blocked_slots)) {
+                $blocked_slots = [];
+            }
 
-        $time_slots = [];
-        $hours = $this->get_business_hours();
-        foreach ($hours as $time) {
+            $submissions = Submissions::get_instance();
+            $appointments = $submissions->get_appointments_for_date($date);
+            if (!is_array($appointments)) {
+                $appointments = [];
+            }
+            $service_duration_map = $this->get_service_duration_map();
 
-            if ($holiday_closed) {
-                $is_default_available = false;
-            } else {
-                $is_default_available = in_array($time, $default_hours, true);
-                if (isset($overrides[$time])) {
-                    if ($overrides[$time] === 'allow') {
-                        $is_default_available = true;
-                    } elseif ($overrides[$time] === 'block') {
-                        $is_default_available = false;
+            $weekly = $db->get_weekly_availability();
+            $holiday_availability = $db->get_holiday_availability();
+            $dow = date('w', strtotime($date));
+            $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
+            $overrides = $db->get_overrides_for_date($date);
+            $holiday_key = Holidays::get_us_holiday_key_for_date($date);
+            $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
+            $holiday_closed = $holiday_key && !$holiday_enabled;
+
+            $time_slots = [];
+            $occupied_times = [];
+            $hours = $this->get_business_hours();
+            foreach ($hours as $time) {
+
+                if ($holiday_closed) {
+                    $is_default_available = false;
+                } else {
+                    $is_default_available = in_array($time, $default_hours, true);
+                    if (isset($overrides[$time])) {
+                        if ($overrides[$time] === 'allow') {
+                            $is_default_available = true;
+                        } elseif ($overrides[$time] === 'block') {
+                            $is_default_available = false;
+                        }
                     }
                 }
-            }
 
-            $is_blocked_explicit = false;
-            foreach ($blocked_slots as $slot) {
-                if (substr($slot['block_time'], 0, 5) == $time) {
-                    $is_blocked_explicit = true;
-                    break;
+                $is_blocked_explicit = false;
+                foreach ($blocked_slots as $slot) {
+                    if (!is_array($slot) || empty($slot['block_time'])) {
+                        continue;
+                    }
+                    if (substr((string) $slot['block_time'], 0, 5) == $time) {
+                        $is_blocked_explicit = true;
+                        break;
+                    }
                 }
-            }
 
-            // collect all appointments that match this time (may be multiple)
-            $matching = [];
-            foreach ($appointments as $apt) {
-                if (substr($apt['time'], 0, 5) == $time) {
-                    $matching[] = $apt;
+                // collect first appointment that matches this time
+                $matching = null;
+                foreach ($appointments as $apt) {
+                    if (!is_array($apt) || empty($apt['time'])) {
+                        continue;
+                    }
+                    $apt_time = $this->normalize_time_value($apt['time']);
+                    if ($apt_time === '') {
+                        continue;
+                    }
+                    if ($apt_time == $time) {
+                        $duration_seconds = $this->get_appointment_duration_seconds($apt, $service_duration_map);
+                        if ($duration_seconds > 0) {
+                            $slots_needed = $this->get_slots_needed($duration_seconds);
+                            for ($i = 1; $i <= $slots_needed; $i++) {
+                                $next_time = $this->add_minutes($time, 30 * $i);
+                                if ($next_time) {
+                                    $occupied_times[$next_time] = true;
+                                }
+                            }
+                            $apt['duration_seconds'] = $duration_seconds;
+                            $apt['end_time'] = $this->add_minutes($time, 30 * $slots_needed);
+                        } else {
+                            $apt['duration_seconds'] = 0;
+                        }
+                        $matching = $apt;
+                        break;
+                    }
                 }
+
+                if (empty($matching) && isset($occupied_times[$time])) {
+                    $time_slots[] = [
+                        'time' => $time,
+                        'is_default_available' => $is_default_available,
+                        'is_blocked_explicit' => $is_blocked_explicit,
+                        'is_occupied' => true,
+                        'slot_duration_seconds' => 1800,
+                    ];
+                    continue;
+                }
+
+                $slot_payload = [
+                    'time' => $time,
+                    'is_default_available' => $is_default_available,
+                    'is_blocked_explicit' => $is_blocked_explicit,
+                    'is_occupied' => false,
+                    'slot_duration_seconds' => 1800,
+                ];
+                if (!empty($matching)) {
+                    $slot_payload['appointments'] = $matching;
+                }
+                $time_slots[] = $slot_payload;
             }
 
-            $time_slots[] = [
-                'time' => $time,
-                'is_default_available' => $is_default_available,
-                'is_blocked_explicit' => $is_blocked_explicit,
-                // plural appointments array; keep single 'appointment' for backward compatibility
-                'appointments' => $matching,
-                'appointment' => count($matching) === 1 ? $matching[0] : null,
-            ];
-        }
-
-        // Enrich appointments with full submission fields when possible
-        if (!empty($time_slots)) {
-            foreach ($time_slots as &$slot) {
-                if (empty($slot['appointments'])) continue;
-
-                foreach ($slot['appointments'] as &$appt) {
-                    if (empty($appt['id'])) continue;
+            // Enrich appointments with full submission fields when possible
+            if (!empty($time_slots)) {
+                foreach ($time_slots as &$slot) {
+                    if (empty($slot['appointments'])) {
+                        continue;
+                    }
+                    $appt = $slot['appointments'];
+                    if (empty($appt['id'])) {
+                        continue;
+                    }
 
                     // If the appointments table stored submission_data, prefer that
                     $full = [];
@@ -215,19 +281,50 @@ class Handlers {
                         if (empty($full['created_at']) && isset($appt['created_at'])) {
                             $full['created_at'] = $appt['created_at'];
                         }
-                        $appt = $full;
+                        if (!empty($full['all_data']) && is_array($full['all_data'])) {
+                            if (!empty($full['all_data']['csa_service'])) {
+                                $full['service'] = is_string($full['all_data']['csa_service'])
+                                    ? $this->normalize_service_title($full['all_data']['csa_service'])
+                                    : $full['all_data']['csa_service'];
+                            } else {
+                                foreach ($full['all_data'] as $key => $val) {
+                                    if (stripos($key, 'service') !== false) {
+                                        $full['service'] = is_string($val) ? $this->normalize_service_title($val) : $val;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        $duration_seconds = $this->get_appointment_duration_seconds($full, $service_duration_map);
+                        if ($duration_seconds > 0) {
+                            $slots_needed = $this->get_slots_needed($duration_seconds);
+                            $end_time = $this->add_minutes(substr($full['time'], 0, 5), 30 * $slots_needed);
+                            $full['duration_seconds'] = $duration_seconds;
+                            $full['end_time'] = $end_time ? $end_time : null;
+                        } else {
+                            $full['duration_seconds'] = 0;
+                        }
+                        $slot['appointments'] = $full;
                     }
                 }
-                unset($appt);
+                unset($slot);
             }
-            unset($slot);
-        }
 
-        wp_send_json_success([
-            'date' => $date,
-            'timezone_label' => $this->get_timezone_label(),
-            'time_slots' => $time_slots,
-        ]);
+            restore_error_handler();
+            wp_send_json_success([
+                'date' => $date,
+                'timezone_label' => $this->get_timezone_label(),
+                'time_slots' => $time_slots,
+            ]);
+        } catch (\Throwable $e) {
+            restore_error_handler();
+            $message = __('Error loading day details.', self::TEXT_DOMAIN);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                $message .= ' ' . $e->getMessage();
+                error_log('[CSA] get_day_details exception: ' . $e->getMessage());
+            }
+            wp_send_json_error(['message' => $message]);
+        }
     }
 
     /**
@@ -396,9 +493,10 @@ class Handlers {
 
         $available_times = [];
         $hours = $this->get_business_hours();
+        $service_duration_map = $this->get_service_duration_map();
         $hours_set = array_fill_keys($hours, true);
         $blocked_set = $this->build_time_set($blocked_slots);
-        $booked_set = $this->build_time_set($appointments, 'time');
+        $booked_set = $this->build_booked_set($appointments, $service_duration_map);
         $slots_needed = $this->get_slots_needed($duration_seconds);
         foreach ($hours as $time) {
             if (!$this->is_time_range_available($date, $time, $slots_needed, $default_hours, $overrides, $holiday_closed, $blocked_set, $booked_set, $hours_set)) {
@@ -430,6 +528,7 @@ class Handlers {
         $submissions = Submissions::get_instance();
         $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
         $slots_needed = $this->get_slots_needed($duration_seconds);
+        $service_duration_map = $this->get_service_duration_map();
 
         $tz = $this->get_timezone_object();
         $now = $tz ? new \DateTime('now', $tz) : new \DateTime();
@@ -461,7 +560,7 @@ class Handlers {
                 $hours = $this->get_business_hours();
                 $hours_set = array_fill_keys($hours, true);
                 $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr));
-                $booked_set = $this->build_time_set($submissions->get_appointments_for_date($dateStr), 'time');
+                $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr), $service_duration_map);
                 foreach ($hours as $time) {
                     if ($dateStr === $today && $now) {
                         $slot_dt = \DateTime::createFromFormat('Y-m-d H:i', $dateStr . ' ' . $time, $now->getTimezone());
@@ -505,6 +604,7 @@ class Handlers {
         $submissions = Submissions::get_instance();
         $weekly = $db->get_weekly_availability();
         $holiday_availability = $db->get_holiday_availability();
+        $service_duration_map = $this->get_service_duration_map();
 
         $tz = $this->get_timezone_object();
         $now = $tz ? new \DateTime('now', $tz) : new \DateTime();
@@ -530,7 +630,7 @@ class Handlers {
             $hours = $this->get_business_hours();
             $hours_set = array_fill_keys($hours, true);
             $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr));
-            $booked_set = $this->build_time_set($submissions->get_appointments_for_date($dateStr), 'time');
+            $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr), $service_duration_map);
             foreach ($hours as $time) {
                 if ($dateStr === $today && $now) {
                     $slot_dt = \DateTime::createFromFormat('Y-m-d H:i', $dateStr . ' ' . $time, $now->getTimezone());
@@ -781,6 +881,173 @@ class Handlers {
     }
 
     /**
+     * Build a set of booked times expanded by service duration.
+     *
+     * @param array $appointments
+     * @param array $service_duration_map
+     * @return array
+     */
+    private function build_booked_set($appointments, $service_duration_map) {
+        $set = [];
+        foreach ($appointments as $appt) {
+            if (!is_array($appt) || empty($appt['time'])) {
+                continue;
+            }
+            $start = $this->normalize_time_value($appt['time']);
+            if ($start === '') {
+                continue;
+            }
+            $duration_seconds = $this->get_appointment_duration_seconds($appt, $service_duration_map);
+            $slots_needed = $this->get_slots_needed($duration_seconds);
+            $slots_to_block = $duration_seconds > 0 ? $slots_needed : 0;
+            for ($i = 0; $i <= $slots_to_block; $i++) {
+                $slot_time = $i === 0 ? $start : $this->add_minutes($start, 30 * $i);
+                if ($slot_time) {
+                    $set[$slot_time] = true;
+                }
+            }
+        }
+        return $set;
+    }
+
+    /**
+     * Build a service title => duration seconds map.
+     *
+     * @return array
+     */
+    private function get_service_duration_map() {
+        $db = Database::get_instance();
+        $services = $db->get_services();
+        $map = [];
+        foreach ($services as $service) {
+            if (!is_array($service)) {
+                continue;
+            }
+            $title = isset($service['title']) ? (string) $service['title'] : '';
+            $title = $this->normalize_service_key($title);
+            $duration = isset($service['duration']) ? (string) $service['duration'] : '';
+            if ($title !== '' && ctype_digit($duration)) {
+                $map[$title] = (int) $duration;
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Determine appointment duration from appointment data.
+     *
+     * @param array $appointment
+     * @param array $service_duration_map
+     * @return int
+     */
+    private function get_appointment_duration_seconds($appointment, $service_duration_map) {
+        if (isset($appointment['duration_seconds']) && is_numeric($appointment['duration_seconds'])) {
+            return (int) $appointment['duration_seconds'];
+        }
+        if (!empty($appointment['service'])) {
+            $service_key = $this->normalize_service_key($appointment['service']);
+            if ($service_key !== '' && isset($service_duration_map[$service_key])) {
+                return (int) $service_duration_map[$service_key];
+            }
+        }
+        if (!empty($appointment['all_data']) && is_array($appointment['all_data'])) {
+            if (!empty($appointment['all_data']['csa_service'])) {
+                $service_key = $this->normalize_service_key($appointment['all_data']['csa_service']);
+                if ($service_key !== '' && isset($service_duration_map[$service_key])) {
+                    return (int) $service_duration_map[$service_key];
+                }
+            }
+            foreach ($appointment['all_data'] as $key => $val) {
+                if (!is_string($val)) {
+                    continue;
+                }
+                if (stripos((string) $key, 'service') !== false) {
+                    $service_key = $this->normalize_service_key($val);
+                    if ($service_key !== '' && isset($service_duration_map[$service_key])) {
+                        return (int) $service_duration_map[$service_key];
+                    }
+                }
+                $service_title = $this->extract_service_from_value($val);
+                if ($service_title !== '') {
+                    $service_key = $this->normalize_service_key($service_title);
+                    if ($service_key !== '' && isset($service_duration_map[$service_key])) {
+                        return (int) $service_duration_map[$service_key];
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Normalize a service title for lookup.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_service_title($value) {
+        if (!is_string($value)) {
+            return '';
+        }
+        $clean = trim($value);
+        if ($clean === '') {
+            return '';
+        }
+        if (stripos($clean, 'csa::service') === 0 && strpos($clean, '-->') !== false) {
+            $parts = explode('-->', $clean, 2);
+            if (isset($parts[1])) {
+                $clean = trim($parts[1]);
+            }
+        }
+        if (strpos($clean, '-->') !== false) {
+            $parts = explode('-->', $clean, 2);
+            if (isset($parts[1])) {
+                $clean = trim($parts[1]);
+            }
+        }
+        return $clean;
+    }
+
+    /**
+     * Normalize a service title for matching against the duration map.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_service_key($value) {
+        $clean = $this->normalize_service_title($value);
+        if ($clean === '') {
+            return '';
+        }
+        $clean = strtolower($clean);
+        $clean = preg_replace('/\\s+/', ' ', $clean);
+        return trim($clean);
+    }
+
+    /**
+     * Extract a service title from a stored value when present.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function extract_service_from_value($value) {
+        if (!is_string($value)) {
+            return '';
+        }
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return '';
+        }
+        if (stripos($trimmed, 'csa::service') === 0 && strpos($trimmed, '-->') !== false) {
+            $parts = explode('-->', $trimmed, 2);
+            if (isset($parts[1])) {
+                return trim($parts[1]);
+            }
+        }
+        return '';
+    }
+
+    /**
      * Get number of 30-minute slots needed for a duration.
      *
      * @param int $duration_seconds
@@ -808,6 +1075,30 @@ class Handlers {
         }
         $dt->modify('+' . intval($minutes) . ' minutes');
         return $dt->format('H:i');
+    }
+
+    /**
+     * Normalize a time string to H:i.
+     *
+     * @param string $time
+     * @return string
+     */
+    private function normalize_time_value($time) {
+        if (!is_string($time)) {
+            return '';
+        }
+        $trimmed = trim($time);
+        if ($trimmed === '') {
+            return '';
+        }
+        if (strlen($trimmed) >= 5 && preg_match('/^\\d{1,2}:\\d{2}/', $trimmed)) {
+            return substr($trimmed, 0, 5);
+        }
+        $ts = strtotime($trimmed);
+        if ($ts === false) {
+            return '';
+        }
+        return date('H:i', $ts);
     }
 
     /**

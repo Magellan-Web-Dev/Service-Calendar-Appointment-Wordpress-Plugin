@@ -19,8 +19,8 @@ export class AdminDaySummaryRenderer {
 
         if (data.time_slots && data.time_slots.length) {
             data.time_slots.forEach((slot) => {
-                if (slot.appointments && slot.appointments.length) {
-                    appointmentCount += slot.appointments.length;
+                if (slot.appointments) {
+                    appointmentCount += 1;
                 }
                 if (slot.is_blocked_explicit) {
                     blockedCount += 1;
