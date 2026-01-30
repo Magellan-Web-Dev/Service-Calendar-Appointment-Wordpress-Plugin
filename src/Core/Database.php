@@ -1,0 +1,627 @@
+<?php
+/**
+ * Database class
+ *
+ * @package CalendarServiceAppointmentsForm\Core
+ */
+
+namespace CalendarServiceAppointmentsForm\Core;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * Handles database operations for blocked time slots
+ */
+class Database {
+
+    /**
+     * Option name for weekly availability
+     *
+     * @var string
+     */
+    public const OPTION_WEEKLY_AVAILABILITY = 'csa_weekly_availability';
+
+    /**
+     * Option name for manual overrides of availability
+     *
+     * @var string
+     */
+    public const OPTION_MANUAL_OVERRIDES = 'csa_manual_overrides';
+
+    /**
+     * Option name for holiday availability
+     *
+     * @var string
+     */
+    public const OPTION_HOLIDAY_AVAILABILITY = 'csa_holiday_availability';
+
+    /**
+     * Table name for blocked time slots
+     *
+     * @var string
+     */
+    public const TABLE_BLOCKED_SLOTS = 'csa_blocked_slots';
+
+    /**
+     * Table name for appointments
+     *
+     * @var string
+     */
+    public const TABLE_APPOINTMENTS = 'csa_appointments';
+
+    /**
+     * @var Database|null
+     */
+    private static $instance = null;
+
+    /**
+     * @var string
+     */
+    private $table_name;
+
+    /**
+     * @var string
+     */
+    private $appointments_table;
+
+    /**
+     * Get singleton instance
+     *
+     * @return Database
+     */
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    /**
+     * Constructor
+     */
+    private function __construct() {
+        global $wpdb;
+        $this->table_name = $wpdb->prefix . self::TABLE_BLOCKED_SLOTS;
+        $this->appointments_table = $wpdb->prefix . self::TABLE_APPOINTMENTS;
+    }
+
+    /**
+     * Get weekly availability from options
+     *
+     * @return array Weekday (0-6) => array of hour strings (HH:MM)
+     */
+    public function get_weekly_availability() {
+        $opt = get_option(self::OPTION_WEEKLY_AVAILABILITY, false);
+        if ($opt === false) {
+            // default: Mon-Fri at predefined 30-minute increments
+            $default = array();
+            for ($d = 0; $d <= 6; $d++) {
+                $default[$d] = array();
+            }
+            $default_times = array(
+                '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+                '11:00', '11:30', '13:00', '13:30', '14:00', '14:30',
+                '15:00', '15:30', '16:00', '16:30',
+            );
+            for ($d = 1; $d <= 5; $d++) {
+                $default[$d] = $default_times;
+            }
+            update_option(self::OPTION_WEEKLY_AVAILABILITY, $default);
+            return $default;
+        }
+
+        return (array) $opt;
+    }
+
+    /**
+     * Save weekly availability to options
+     *
+     * @param array $availability
+     * @return bool
+     */
+    public function save_weekly_availability($availability) {
+        return update_option(self::OPTION_WEEKLY_AVAILABILITY, $availability);
+    }
+
+    /**
+     * Get holiday availability from options.
+     *
+     * @return array Array of enabled holiday keys.
+     */
+    public function get_holiday_availability() {
+        $opt = get_option(self::OPTION_HOLIDAY_AVAILABILITY, array());
+        if (!is_array($opt)) {
+            return array();
+        }
+        return $opt;
+    }
+
+    /**
+     * Save holiday availability to options.
+     *
+     * @param array $availability
+     * @return bool
+     */
+    public function save_holiday_availability($availability) {
+        return update_option(self::OPTION_HOLIDAY_AVAILABILITY, $availability);
+    }
+
+    /**
+     * Get manual overrides for availability (per-date)
+     *
+     * @return array date => [ 'HH:MM' => 'allow'|'block' ]
+     */
+    public function get_manual_overrides() {
+        $opt = get_option(self::OPTION_MANUAL_OVERRIDES, array());
+        return (array) $opt;
+    }
+
+    /**
+     * Get overrides for a specific date
+     *
+     * @param string $date
+     * @return array
+     */
+    public function get_overrides_for_date($date) {
+        $all = $this->get_manual_overrides();
+        return isset($all[$date]) ? $all[$date] : array();
+    }
+
+    /**
+     * Set or remove a manual override for a date/time
+     *
+     * @param string $date
+     * @param string $time
+     * @param string $status 'allow' or 'block' or 'remove'
+     * @return bool
+     */
+    public function set_manual_override($date, $time, $status) {
+        $all = $this->get_manual_overrides();
+        if (!isset($all[$date])) {
+            $all[$date] = array();
+        }
+        if ($status === 'remove') {
+            if (isset($all[$date][$time])) {
+                unset($all[$date][$time]);
+            }
+            if (empty($all[$date])) {
+                unset($all[$date]);
+            }
+        } else {
+            $all[$date][$time] = $status;
+        }
+
+        return update_option(self::OPTION_MANUAL_OVERRIDES, $all);
+    }
+
+    /**
+     * Try to reserve a time slot by inserting into blocked slots table.
+     * This is used as a simple reservation mechanism to avoid double-booking.
+     *
+     * @param string $date Date in Y-m-d format.
+     * @param string $time Time in H:i:s format (or H:i).
+     * @return bool True if reservation succeeded, false if already reserved.
+     */
+    public function reserve_time_slot($date, $time) {
+        global $wpdb;
+
+        // Normalize time to H:i:s
+        if (strlen($time) === 5) {
+            $time = $time . ':00';
+        }
+
+        $result = $wpdb->insert(
+            $this->table_name,
+            array(
+                'block_date' => $date,
+                'block_time' => $time,
+            ),
+            array('%s', '%s')
+        );
+
+        if ($result === false) {
+            // likely duplicate or error
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Create database tables
+     *
+     * @return void
+     */
+    public static function create_tables() {
+        global $wpdb;
+        $table_name = $wpdb->prefix . self::TABLE_BLOCKED_SLOTS;
+        $charset_collate = $wpdb->get_charset_collate();
+
+        // Create blocked slots table
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            block_date date NOT NULL,
+            block_time time NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id),
+            UNIQUE KEY date_time (block_date, block_time)
+        ) $charset_collate;";
+
+        // Create tables
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+
+        // Create appointments table to store parsed Elementor submissions
+        $appt_table = $wpdb->prefix . self::TABLE_APPOINTMENTS;
+        $sql2 = "CREATE TABLE IF NOT EXISTS $appt_table (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            submission_id bigint(20) DEFAULT NULL,
+            appointment_date date NOT NULL,
+            appointment_time time NOT NULL,
+            submission_data longtext DEFAULT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY submission_date_time (submission_id, appointment_date, appointment_time)
+        ) $charset_collate;";
+
+        dbDelta($sql2);
+
+        // Ensure submission_data column exists (adds column for older installs)
+        $appt_table_esc = esc_sql($appt_table);
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$appt_table_esc} LIKE 'submission_data'");
+        if (empty($col)) {
+            $alter = "ALTER TABLE {$appt_table} ADD COLUMN submission_data LONGTEXT DEFAULT NULL";
+            $wpdb->query($alter);
+        }
+    }
+
+    /**
+     * Insert a parsed appointment record (from Elementor submission)
+     * @param int|null $submission_id
+     * @param string $date Y-m-d
+     * @param string $time H:i or H:i:s
+     * @return int|false Insert ID or false
+     */
+    public function insert_appointment($submission_id, $date, $time, $submission_data = null) {
+        global $wpdb;
+
+        if (strlen($time) === 5) {
+            $time = $time . ':00';
+        }
+
+        $data = array(
+            'submission_id' => $submission_id ? intval($submission_id) : null,
+            'appointment_date' => $date,
+            'appointment_time' => $time,
+        );
+
+        if (!empty($submission_data)) {
+            if (is_array($submission_data)) {
+                $json = wp_json_encode($submission_data);
+            } else {
+                $json = (string) $submission_data;
+            }
+            $data['submission_data'] = $json;
+        }
+
+        $formats = array('%d', '%s', '%s');
+        if (isset($data['submission_data'])) { $formats[] = '%s'; }
+        // Ensure appointments table exists (create on-demand if necessary)
+        if (!$this->does_table_exist($this->appointments_table)) {
+            self::create_tables();
+        }
+
+        // Ensure submission_data column exists when we plan to insert it (fix for older installs)
+        if (isset($data['submission_data']) && !$this->table_has_column($this->appointments_table, 'submission_data')) {
+            $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN submission_data LONGTEXT DEFAULT NULL";
+            $wpdb->query($alter_sql);
+        }
+
+        $res = $wpdb->insert($this->appointments_table, $data, $formats);
+        if ($res === false) {
+            // Attempt to update existing row for this submission/date/time
+            if ($submission_id) {
+                $updated = $wpdb->update(
+                    $this->appointments_table,
+                    array('submission_data' => isset($data['submission_data']) ? $data['submission_data'] : null),
+                    array(
+                        'submission_id' => intval($submission_id),
+                        'appointment_date' => $date,
+                        'appointment_time' => $time,
+                    ),
+                    array('%s'),
+                    array('%d','%s','%s')
+                );
+                if ($updated !== false) {
+                    // fetch id
+                    $row = $wpdb->get_row($wpdb->prepare(
+                        "SELECT id FROM {$this->appointments_table} WHERE submission_id = %d AND appointment_date = %s AND appointment_time = %s",
+                        intval($submission_id), $date, $time
+                    ), ARRAY_A);
+                    return $row ? intval($row['id']) : false;
+                }
+            }
+            return false;
+        }
+        return $wpdb->insert_id;
+    }
+
+    /**
+     * Get appointments from the appointments table for a month
+     * @param int $year
+     * @param int $month
+     * @return array
+     */
+    public function get_appointments_for_month_from_table($year, $month) {
+        global $wpdb;
+        $start_date = sprintf('%04d-%02d-01', $year, $month);
+        $end_date = date('Y-m-t', strtotime($start_date));
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return array();
+        }
+
+        // If submission_data column exists, include it; otherwise select without it
+        if ($this->table_has_column($this->appointments_table, 'submission_data')) {
+            $results = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, created_at FROM {$this->appointments_table}
+                WHERE appointment_date BETWEEN %s AND %s
+                ORDER BY appointment_date, appointment_time",
+                $start_date,
+                $end_date
+            ), ARRAY_A);
+
+            // decode submission_data JSON into array
+            foreach ($results as &$r) {
+                if (!empty($r['submission_data'])) {
+                    $decoded = json_decode($r['submission_data'], true);
+                    $r['submission_data'] = $decoded !== null ? $decoded : $r['submission_data'];
+                } else {
+                    $r['submission_data'] = array();
+                }
+            }
+        } else {
+            $results = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, submission_id, appointment_date, appointment_time, created_at FROM {$this->appointments_table}
+                WHERE appointment_date BETWEEN %s AND %s
+                ORDER BY appointment_date, appointment_time",
+                $start_date,
+                $end_date
+            ), ARRAY_A);
+            // ensure submission_data key exists for compatibility
+            foreach ($results as &$r) { $r['submission_data'] = array(); }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Get appointments for a specific date from table
+     * @param string $date
+     * @return array
+     */
+    public function get_appointments_for_date_from_table($date) {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return array();
+        }
+
+        if ($this->table_has_column($this->appointments_table, 'submission_data')) {
+            $results = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, created_at FROM {$this->appointments_table}
+                WHERE appointment_date = %s
+                ORDER BY appointment_time",
+                $date
+            ), ARRAY_A);
+
+            foreach ($results as &$r) {
+                if (!empty($r['submission_data'])) {
+                    $decoded = json_decode($r['submission_data'], true);
+                    $r['submission_data'] = $decoded !== null ? $decoded : $r['submission_data'];
+                } else {
+                    $r['submission_data'] = array();
+                }
+            }
+        } else {
+            $results = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, submission_id, appointment_date, appointment_time, created_at FROM {$this->appointments_table}
+                WHERE appointment_date = %s
+                ORDER BY appointment_time",
+                $date
+            ), ARRAY_A);
+            foreach ($results as &$r) { $r['submission_data'] = array(); }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Delete an appointment record by its appointment-table id
+     *
+     * @param int $id
+     * @return int|false Number of rows deleted or false
+     */
+    public function delete_appointment_by_id($id) {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return false;
+        }
+
+        return $wpdb->delete($this->appointments_table, array('id' => intval($id)), array('%d'));
+    }
+
+    /**
+     * Delete appointment records by submission id + date + time match
+     * Useful when the appointment-table id is not available.
+     *
+     * @param int $submission_id
+     * @param string $date Y-m-d
+     * @param string $time H:i or H:i:s
+     * @return int|false Number of rows deleted or false
+     */
+    public function delete_appointment_by_submission($submission_id, $date, $time) {
+        global $wpdb;
+        if (strlen($time) === 5) { $time .= ':00'; }
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return false;
+        }
+
+        return $wpdb->delete(
+            $this->appointments_table,
+            array(
+                'submission_id' => intval($submission_id),
+                'appointment_date' => $date,
+                'appointment_time' => $time,
+            ),
+            array('%d','%s','%s')
+        );
+    }
+
+    /**
+     * Delete appointments older than N months (based on created_at)
+     *
+     * @param int $months
+     * @return int|false Number of rows deleted or false
+     */
+    public function delete_appointments_older_than_months($months = 3) {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return 0;
+        }
+
+        $threshold = date('Y-m-d H:i:s', strtotime("-{$months} months"));
+        $sql = $wpdb->prepare("DELETE FROM {$this->appointments_table} WHERE created_at < %s", $threshold);
+        return $wpdb->query($sql);
+    }
+
+    /**
+     * Check whether a table exists in the current database
+     *
+     * @param string $table_name
+     * @return bool
+     */
+    private function does_table_exist($table_name) {
+        global $wpdb;
+        $escaped = esc_sql($table_name);
+        $res = $wpdb->get_var("SHOW TABLES LIKE '{$escaped}'");
+        return (bool) $res;
+    }
+
+    /**
+     * Check whether a specific column exists in a table
+     *
+     * @param string $table_name
+     * @param string $column
+     * @return bool
+     */
+    private function table_has_column($table_name, $column) {
+        global $wpdb;
+        $t = esc_sql($table_name);
+        $c = esc_sql($column);
+        $res = $wpdb->get_results("SHOW COLUMNS FROM {$t} LIKE '{$c}'");
+        return !empty($res);
+    }
+
+    /**
+     * Block a time slot
+     *
+     * @param string $date Date in Y-m-d format.
+     * @param string $time Time in H:i:s format.
+     * @return int|false The number of rows inserted, or false on error.
+     */
+    public function block_time_slot($date, $time) {
+        global $wpdb;
+
+        return $wpdb->insert(
+            $this->table_name,
+            array(
+                'block_date' => $date,
+                'block_time' => $time,
+            ),
+            array('%s', '%s')
+        );
+    }
+
+    /**
+     * Unblock a time slot
+     *
+     * @param string $date Date in Y-m-d format.
+     * @param string $time Time in H:i:s format.
+     * @return int|false The number of rows deleted, or false on error.
+     */
+    public function unblock_time_slot($date, $time) {
+        global $wpdb;
+
+        return $wpdb->delete(
+            $this->table_name,
+            array(
+                'block_date' => $date,
+                'block_time' => $time,
+            ),
+            array('%s', '%s')
+        );
+    }
+
+    /**
+     * Check if a time slot is blocked
+     *
+     * @param string $date Date in Y-m-d format.
+     * @param string $time Time in H:i:s format.
+     * @return bool True if blocked, false otherwise.
+     */
+    public function is_slot_blocked($date, $time) {
+        global $wpdb;
+
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$this->table_name} WHERE block_date = %s AND block_time = %s",
+            $date,
+            $time
+        ));
+
+        return $count > 0;
+    }
+
+    /**
+     * Get blocked slots for a month
+     *
+     * @param int $year Year.
+     * @param int $month Month.
+     * @return array Array of blocked slots.
+     */
+    public function get_blocked_slots_for_month($year, $month) {
+        global $wpdb;
+
+        $start_date = sprintf('%04d-%02d-01', $year, $month);
+        $end_date = date('Y-m-t', strtotime($start_date));
+
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT block_date, block_time FROM {$this->table_name}
+            WHERE block_date BETWEEN %s AND %s
+            ORDER BY block_date, block_time",
+            $start_date,
+            $end_date
+        ), ARRAY_A);
+
+        return $results;
+    }
+
+    /**
+     * Get blocked slots for a specific date
+     *
+     * @param string $date Date in Y-m-d format.
+     * @return array Array of blocked slots.
+     */
+    public function get_blocked_slots_for_date($date) {
+        global $wpdb;
+
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT block_time FROM {$this->table_name}
+            WHERE block_date = %s
+            ORDER BY block_time",
+            $date
+        ), ARRAY_A);
+
+        return $results;
+    }
+}

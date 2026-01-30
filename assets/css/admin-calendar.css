@@ -1,0 +1,431 @@
+.csa-calendar-wrapper {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    margin-top: 20px;
+}
+
+body.loading-overlay {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100000;
+    opacity: 0;
+    transition: opacity 0.25s;
+    pointer-events: none;
+}
+
+body.loading-overlay::after {
+    content: 'Loading...';
+    font-size: clamp(3rem, 9vw, 5rem);
+    color: #000;
+    inset: 0;
+    margin: auto;
+    width: max-content;
+    height: max-content;
+    text-align: center;
+    opacity: 1;
+    
+}
+
+#csa-save-weekly-availability:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.csa-calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #0073aa;
+}
+
+.csa-calendar-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #23282d;
+}
+
+.csa-calendar {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.csa-calendar thead th {
+    background: #f7f7f7;
+    padding: 12px;
+    text-align: center;
+    font-weight: 600;
+    border: 1px solid #ddd;
+    color: #555;
+}
+
+.csa-calendar-day {
+    border: 1px solid #ddd;
+    padding: 10px;
+    vertical-align: top;
+    min-height: 100px;
+    height: 120px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+}
+
+.csa-calendar-day:hover {
+    background-color: #f0f6fc;
+}
+
+.csa-calendar-day.empty {
+    background: #f9f9f9;
+    cursor: default;
+}
+
+.csa-calendar-day.empty:hover {
+    background: #f9f9f9;
+}
+
+.csa-calendar-day.weekend {
+    background: #f5f5f5;
+    cursor: default;
+}
+
+.csa-calendar-day.weekend:hover {
+    background: #f5f5f5;
+}
+
+.csa-calendar-day.today {
+    background: #e7f5ff;
+    border: 2px solid #0073aa;
+}
+
+.csa-calendar-day .day-number {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #23282d;
+    margin-bottom: 0.5em;
+}
+
+.csa-calendar-day .day-info {
+    font-size: 0.75rem;
+    padding: 0.2857em 0.5714em;
+    border-radius: 3px;
+    margin-bottom: 0.2857em;
+    text-align: center;
+}
+
+.csa-calendar-day .day-info.appointments {
+    background: #d1f0d1;
+    color: #2e7d32;
+}
+
+.csa-calendar-day .day-info.blocked {
+    background: #ffe0e0;
+    color: #c62828;
+}
+
+#csa-day-detail-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100000;
+}
+
+.csa-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+}
+
+.csa-modal-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    max-width: 800px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: auto;
+}
+
+.csa-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.csa-modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.csa-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.875rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+}
+
+.csa-modal-close:hover {
+    color: #000;
+}
+
+.csa-modal-body {
+    padding: 20px;
+}
+
+.csa-time-slot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+}
+
+/* When a slot has appointments, stack content vertically so accordion expands downward */
+.csa-time-slot.booked {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.csa-time-slot.blocked {
+    background: #ffe0e0;
+}
+
+.csa-time-slot.booked {
+    background: #e8f5e9;
+}
+
+.csa-time-slot-time {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.csa-time-slot-info {
+    flex: 1;
+    margin: 0 15px;
+}
+
+.csa-time-slot-customer {
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.csa-time-slot-contact {
+    font-size: 0.8125rem;
+    color: #666;
+}
+
+.csa-time-slot-status {
+    display: inline-block;
+    padding: 0.25em 0.8333em;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.csa-time-slot-status.pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.csa-time-slot-status.confirmed {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.csa-time-slot-status.cancelled {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.csa-time-slot-status.completed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.csa-time-slot-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.csa-btn {
+    padding: 0.6154em 1.1538em;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.csa-btn-block {
+    background: #dc3545;
+    color: #fff;
+}
+
+.csa-btn-block:hover {
+    background: #c82333;
+}
+
+.csa-btn-unblock {
+    background: #28a745;
+    color: #fff;
+}
+
+.csa-btn-unblock:hover {
+    background: #218838;
+}
+
+.csa-btn-view {
+    background: #007bff;
+    color: #fff;
+}
+
+.csa-btn-view:hover {
+    background: #0056b3;
+}
+
+/* Appointment list styling */
+.csa-appointment-list {
+    margin-top: 10px;
+    padding: 10px;
+    border-left: 3px solid #0073aa;
+    background: #fbfcfe;
+    border-radius: 3px;
+}
+
+.csa-appointment-item {
+    padding: 10px;
+    border: 1px solid #e6eef8;
+    border-radius: 3px;
+    background: #fff;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.csa-appointment-name {
+    font-weight: 600;
+    color: #222;
+}
+
+.csa-appointment-contact {
+    font-size: 0.8125rem;
+    color: #666;
+    margin-left: 0.9231em;
+}
+
+.csa-appointment-meta {
+    font-size: 0.75rem;
+    color: #999;
+    margin-left: 1em;
+}
+
+.csa-appointment-actions {
+    margin-left: 20px;
+}
+
+.csa-btn-delete {
+    background: #e74c3c;
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 3px;
+}
+
+.csa-btn-delete:hover {
+    background: #c0392b;
+}
+
+/* Layout for appointment item inner sections */
+.csa-appointment-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.csa-appointment-left {
+    flex: 1 1 auto;
+}
+.csa-appointment-actions {
+    flex: 0 0 auto;
+}
+.csa-appointment-all-data {
+    margin-top: 0.6154em;
+    font-size: 0.8125rem;
+    color:#444;
+}
+.csa-appointment-all-data .csa-appointment-field:not(:first-child) { margin-top: 0.75em; }
+
+p, .csa-appointment-field {
+    font-size: 0.875rem;
+}
+
+#csa-weekly-availability * {
+    font-size: 0.875rem;
+}
+
+#csa-save-weekly-availability, #csa-save-holiday-availability {
+    margin-top: 1.5em;
+}
+
+@media(min-width: 680px) {
+    #csa-weekly-availability tbody, .csa-holiday-list {
+        display: grid;
+        gap: 0.25rem;
+        margin-top: 0.5rem;
+    }
+
+    #csa-weekly-availability input[type="checkbox"] {
+        margin: 0 auto;
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+
+    .csa-weekly-grid {
+        width: min(20rem, 100%);
+    }
+
+    .csa-weekly-grid thead tr{
+        padding-left: 3rem;
+    }
+
+    #csa-weekly-availability .hour-label {
+        min-width: 5rem;
+    }
+
+    #csa-weekly-availability tr {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 0.75rem;
+    }
+
+    #csa-weekly-availability tr td {
+        display: grid;
+        min-width: 2rem;
+    }
+}
