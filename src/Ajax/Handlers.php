@@ -180,7 +180,7 @@ class Handlers {
                         $duration_seconds = $this->get_appointment_duration_seconds($apt, $service_duration_map);
                         if ($duration_seconds > 0) {
                             $slots_needed = $this->get_slots_needed($duration_seconds);
-                            for ($i = 1; $i <= $slots_needed; $i++) {
+                            for ($i = 1; $i < $slots_needed; $i++) {
                                 $next_time = $this->add_minutes($time, 30 * $i);
                                 if ($next_time) {
                                     $occupied_times[$next_time] = true;
@@ -900,7 +900,7 @@ class Handlers {
             $duration_seconds = $this->get_appointment_duration_seconds($appt, $service_duration_map);
             $slots_needed = $this->get_slots_needed($duration_seconds);
             $slots_to_block = $duration_seconds > 0 ? $slots_needed : 0;
-            for ($i = 0; $i <= $slots_to_block; $i++) {
+            for ($i = 0; $i < $slots_to_block; $i++) {
                 $slot_time = $i === 0 ? $start : $this->add_minutes($start, 30 * $i);
                 if ($slot_time) {
                     $set[$slot_time] = true;

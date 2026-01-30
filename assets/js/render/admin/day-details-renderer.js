@@ -297,7 +297,7 @@ const buildOccupiedTimes = (timeSlots, serviceDurationMap) => {
         }
         const slotsNeeded = Math.ceil(duration / 1800);
         const start = appt.time || slot.time;
-        for (let i = 1; i <= slotsNeeded; i += 1) {
+        for (let i = 1; i < slotsNeeded; i += 1) {
             const next = addMinutesToTime(start, 30 * i);
             if (next) {
                 occupied.add(next);
