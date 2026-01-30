@@ -23,6 +23,7 @@ class GitHubUpdater {
     public static function init() {
         add_filter('pre_set_site_transient_update_plugins', [self::class, 'check_for_update']);
         add_filter('plugins_api', [self::class, 'plugins_api'], 10, 3);
+        add_filter('upgrader_source_selection', [self::class, 'fix_source_directory'], 10, 4);
     }
 
     public static function check_for_update($transient) {
@@ -116,5 +117,60 @@ class GitHubUpdater {
         set_site_transient(self::CACHE_KEY, $release, self::CACHE_TTL);
 
         return $release;
+    }
+
+    /**
+     * Ensure the extracted folder name matches the installed plugin directory.
+     *
+     * @param string $source
+     * @param string $remote_source
+     * @param object $upgrader
+     * @param array $hook_extra
+     * @return string
+     */
+    public static function fix_source_directory($source, $remote_source, $upgrader, $hook_extra) {
+        if (empty($hook_extra['type']) || $hook_extra['type'] !== 'plugin') {
+            return $source;
+        }
+        if (empty($hook_extra['action']) || $hook_extra['action'] !== 'update') {
+            return $source;
+        }
+        if (empty($hook_extra['plugin'])) {
+            return $source;
+        }
+
+        $plugin_basename = plugin_basename(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE);
+        if ($hook_extra['plugin'] !== $plugin_basename) {
+            return $source;
+        }
+
+        $installed_folder = dirname($hook_extra['plugin']);
+        if ($installed_folder === '.' || $installed_folder === '') {
+            return $source;
+        }
+
+        $source = trailingslashit($source);
+        $desired = trailingslashit(trailingslashit(dirname($source)) . $installed_folder);
+        global $wp_filesystem;
+        if (!$wp_filesystem) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        if (!$wp_filesystem) {
+            return $source;
+        }
+
+        if ($source === $desired) {
+            return $source;
+        }
+
+        if ($wp_filesystem->is_dir($desired)) {
+            if (!$wp_filesystem->delete($desired, true)) {
+                return $source;
+            }
+        }
+
+        $moved = $wp_filesystem->move($source, $desired, true);
+        return $moved ? $desired : $source;
     }
 }

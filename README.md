@@ -1,18 +1,27 @@
 Calendar Service Appointments Form — README
 
 Overview
-- Adds an admin Appointment Calendar where admins set weekly availability (per weekday, 1-hour slots between 06:00–17:00) and can manually block/unblock specific dates/times.
-- Provides a shortcode [csa_appointment_field] with type=\"services\" and type=\"time\" modes for service selection and time booking.
-- Server-side validation prevents double-booking and enforces admin availability.
+- Adds an admin Appointment Calendar with weekly availability, holiday availability, manual per-slot overrides, and a timezone selector.
+- Adds a Services admin screen to manage service types (title, subheading, duration in seconds, description).
+- Provides a shortcode [csa_appointment_field] with type=\"services\" and type=\"time\" for frontend booking.
+- Stores appointment times in UTC and converts to the selected admin timezone for display.
+- Validates bookings server-side to prevent overlaps and enforce availability.
 
 Shortcode usage
-- Insert `[csa_appointment_field type=\"services\" elementor_prop=\"service_field_id\"]` and `[csa_appointment_field type=\"time\" elementor_prop=\"appointment_field_id\"]` inside an Elementor HTML widget (or any content area that accepts shortcodes).
-- The shortcode outputs three labeled selects:
-  - `appointment_month` (value: YYYY-MM)
-  - `appointment_day` (value: DD)
-  - `appointment_time` (value: HH:MM)
-  - plus a hidden `appointment_date` input (value: YYYY-MM-DD)
-- On form submission (e.g., Elementor Pro Form or custom handler), include `appointment_date` and `appointment_time` in the data sent to the server. The plugin hooks into Elementor Pro form processing to validate these fields when present.
+- Insert both shortcodes on your page:
+  - `[csa_appointment_field type=\"services\" elementor_prop=\"service_field_id\"]`
+  - `[csa_appointment_field type=\"time\" elementor_prop=\"appointment_field_id\"]`
+- Services output:
+  - `<ul><li>` list with title, subheading, duration label, and description
+  - each item includes a hidden radio input
+- Time output:
+  - custom calendar (month/day picker)
+  - available time slots rendered as a list (`<ul><li>`) and a compact `<select>` (mobile)
+  - hidden inputs: `appointment_date` (YYYY-MM-DD) and `appointment_time` (HH:MM)
+- Elementor Pro syncing:
+  - `elementor_prop` maps to your Elementor field id
+  - plugin writes to a hidden input named `csa-field-{id}` and also to `form_fields[{id}]`
+- When the service selection changes, the calendar/time selection resets to prevent overlaps.
 
 AJAX endpoints (used by the shortcode script)
 - `csa_get_available_months` — returns next 12 months that have at least one available slot.
@@ -20,26 +29,37 @@ AJAX endpoints (used by the shortcode script)
 - `csa_get_available_times` — takes `date=YYYY-MM-DD`, returns available times (06:00–17:00) for that day.
 
 Admin
-- Open the plugin "Appointments" admin page to set weekly availability and manually block/unblock per-date slots.
-- Weekly availability is stored in the WordPress options table (`csa_weekly_availability`). Manual overrides are in `csa_manual_overrides`.
+- Calendar submenu:
+  - weekly availability and per-day overrides
+  - holiday availability
+  - timezone selection (US timezones)
+  - day details modal with booked appointments and submission data
+  - reschedule flow for booked appointments
+- Services submenu:
+  - manage service items and durations (stored in seconds)
+- Weekly availability is stored in options (`csa_weekly_availability`).
 
 Developer notes
-- Elementor editor field registration was attempted but not reliably supported across versions; the shortcode approach is intentionally editor-agnostic.
-- Server-side validation occurs in `src/Integrations/Elementor.php::process_appointment_form()` and will reject submissions where the selected slot is blocked or already booked.
-- Default allowed hours are 06:00–17:00 inclusive for start times.
+- Server-side validation lives in `src/Integrations/Elementor.php` and blocks invalid or overlapping appointments.
+- Times are stored in UTC and converted to the selected admin timezone on display.
+- Same‑day bookings require a 2‑hour lead time (frontend availability).
+- Default business hours are defined in `src/Admin/Calendar.php::get_business_hours()` (30‑minute increments).
 
 Files of interest
 - `src/Admin/Calendar.php` — admin calendar and UI
 - `src/Core/Database.php` — persistence + helpers
 - `src/Ajax/Handlers.php` — AJAX endpoints and validation logic
 - `src/Shortcodes.php` — shortcode registration
-- `assets/js/appointment-shortcode.js` — frontend code for populating the selects
+- `assets/js/appointment-shortcode.js` — frontend calendar/time selection
+- `src/Updates/GitHubUpdater.php` — GitHub release updater
 
 Testing
 - Enable WP_DEBUG and WP_DEBUG_LOG if you need logs.
-- Use the admin calendar to set availability, then add the shortcode to a page, open that page, choose month/day/time, and submit with a form that includes hidden `appointment_date` and `appointment_time` values (Elementor Pro Form will be validated automatically if present).
+ - Use the admin calendar to set availability and add services.
+ - Add both shortcodes to a page, select a service, then choose a day/time and submit.
+ - Elementor Pro submissions will be validated automatically if the hidden date/time fields are present.
 
-If you'd like, I can now:
-- Remove the unused Elementor field class files, or
-- Provide step-by-step instructions to add the shortcode to an Elementor page and test a booking flow.
+Auto‑updates (GitHub)
+- The plugin can check GitHub Releases for updates and prompt or auto‑update.
+- Create a release tag like `v1.3.1`, then bump `CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION` to `1.3.1`.
 # Service-Calendar-Appointment-Wordpress-Plugin
