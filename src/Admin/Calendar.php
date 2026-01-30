@@ -145,8 +145,8 @@ class Calendar {
             $db = Database::get_instance();
             $weekly = $db->get_weekly_availability();
             $holiday_availability = $db->get_holiday_availability();
-            $holiday_list = Holidays::get_upcoming_us_holidays($timezone);
             $timezone = $db->get_timezone_string();
+            $holiday_list = Holidays::get_upcoming_us_holidays($timezone);
             $services = $db->get_services();
             $service_duration_map = [];
             foreach ($services as $service) {

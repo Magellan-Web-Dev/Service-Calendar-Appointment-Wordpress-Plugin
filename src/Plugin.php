@@ -92,6 +92,7 @@ class Plugin {
         Admin\Calendar::get_instance();
         Ajax\Handlers::get_instance();
         Integrations\Elementor::get_instance();
+        Updates\GitHubUpdater::init();
 
         // schedule cleanup hook responder
         add_action(self::CLEANUP_HOOK, [$this, 'daily_cleanup']);
