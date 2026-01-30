@@ -24,6 +24,7 @@ export class AdminCalendar {
         this.saveWeeklyButton = qs('#csa-save-weekly-availability');
         this.holidayBaseline = '';
         this.saveHolidayButton = qs('#csa-save-holiday-availability');
+        this.keepLoading = false;
     }
 
     /**
@@ -69,7 +70,7 @@ export class AdminCalendar {
 
         document.addEventListener('csa:ajaxComplete', () => {
             this.ajaxInFlight = Math.max(this.ajaxInFlight - 1, 0);
-            if (!this.ajaxInFlight) {
+            if (!this.ajaxInFlight && !this.keepLoading) {
                 this.body.classList.remove('loading-overlay');
             }
         });
@@ -120,7 +121,7 @@ export class AdminCalendar {
      * @returns {void}
      */
     bindCalendarDayClick() {
-        delegate(document, 'click', '.csa-calendar-day:not(.empty)', (event, target) => {
+        delegate(document, 'click', '.csa-calendar-day:not(.empty):not(.holiday-closed)', (event, target) => {
             const date = target.dataset.date;
             if (!date) {
                 return;
@@ -343,6 +344,7 @@ export class AdminCalendar {
                 });
 
                 this.saveWeeklyButton.disabled = true;
+                this.keepLoading = true;
 
                 try {
                     const response = await this.request({
@@ -352,16 +354,18 @@ export class AdminCalendar {
                     });
 
                     if (response.success) {
-                    const message = response.data && response.data.message ? response.data.message : 'Saved';
-                    window.alert(message);
-                        window.location.reload();
+                    window.location.reload();
                     } else {
                         const message = response.data && response.data.message ? response.data.message : 'Error saving availability';
                         window.alert(message);
+                        this.keepLoading = false;
+                        this.body.classList.remove('loading-overlay');
                         this.updateWeeklySaveState();
                     }
                 } catch (error) {
                     window.alert('Error saving availability');
+                    this.keepLoading = false;
+                    this.body.classList.remove('loading-overlay');
                     this.updateWeeklySaveState();
                 }
             });
@@ -387,6 +391,7 @@ export class AdminCalendar {
                 const holidays = qsa('.csa-holiday-checkbox:checked').map((checkbox) => checkbox.dataset.key).filter((key) => key);
 
                 this.saveHolidayButton.disabled = true;
+                this.keepLoading = true;
 
                 try {
                     const response = await this.request({
@@ -396,16 +401,18 @@ export class AdminCalendar {
                     });
 
                     if (response.success) {
-                        const message = response.data && response.data.message ? response.data.message : 'Saved';
-                        window.alert(message);
                         window.location.reload();
                     } else {
                         const message = response.data && response.data.message ? response.data.message : 'Error saving holiday availability';
                         window.alert(message);
+                        this.keepLoading = false;
+                        this.body.classList.remove('loading-overlay');
                         this.updateHolidaySaveState();
                     }
                 } catch (error) {
                     window.alert('Error saving holiday availability');
+                    this.keepLoading = false;
+                    this.body.classList.remove('loading-overlay');
                     this.updateHolidaySaveState();
                 }
             });

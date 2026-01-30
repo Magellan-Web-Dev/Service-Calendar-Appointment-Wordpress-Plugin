@@ -224,6 +224,9 @@ class Calendar {
                     if (!$has_available) {
                         $classes[] = 'weekend';
                     }
+                    if ($holiday_closed) {
+                        $classes[] = 'holiday-closed';
+                    }
                     if ($is_today) {
                         $classes[] = 'today';
                     }
@@ -237,6 +240,7 @@ class Calendar {
                         'classes' => $classes,
                         'appointment_count' => $appointment_count,
                         'blocked_count' => $blocked_count,
+                        'holiday_closed' => $holiday_closed,
                     );
                     $day++;
                 }

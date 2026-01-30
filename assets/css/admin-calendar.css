@@ -429,3 +429,7 @@ p, .csa-appointment-field {
         min-width: 2rem;
     }
 }
+
+.csa-holiday-availability-section h2 {
+    margin-top: 2.5em;
+}

@@ -56,8 +56,12 @@ class CalendarGrid {
                                     <?php if (!empty($cell['blocked_count'])) : ?>
                                         <div class="day-info blocked">
                                             <?php echo esc_html($cell['blocked_count']); ?>
-                                            <?php echo esc_html__('blocked', $text_domain); ?>
+                                            <?php echo esc_html__('Time Slot(s) Blocked', $text_domain); ?>
                                         </div>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($cell['holiday_closed'])) : ?>
+                                        <div class="day-info blocked"><?php esc_html_e('Blocked For Holiday', $text_domain); ?></div>
                                     <?php endif; ?>
                                 </td>
                             <?php endif; ?>
