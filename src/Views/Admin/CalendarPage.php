@@ -39,6 +39,10 @@ class CalendarPage {
             <p style="width: min(120ch, 100%);"><?php esc_html_e('To add appointment fields on the frontend, use the shortcode [csa_appointment_field] inside an HTML/Raw HTML field or any content area that supports shortcodes. Use attributes type="services" or type="time" and elementor_prop="field_id" for Elementor Pro form field syncing.', $text_domain); ?></p>
 
             <div class="csa-calendar-wrapper">
+                <div id="csa-reschedule-banner" class="csa-reschedule-banner" style="display:none;">
+                    <span><?php esc_html_e('Select date to reassign appointment', $text_domain); ?></span>
+                    <button class="button button-secondary" id="csa-reschedule-cancel"><?php esc_html_e('Cancel Reschedule', $text_domain); ?></button>
+                </div>
                 <div class="csa-calendar-header">
                     <button class="button" id="csa-prev-month">&larr; <?php esc_html_e('Previous', $text_domain); ?></button>
                     <h2 id="csa-current-month"><?php echo esc_html($month_label); ?></h2>

@@ -467,3 +467,42 @@ h2 {
     padding-bottom: 15px;
     border-bottom: 1px solid #ddd;
 }
+
+html:has([id="csa-day-detail-modal"][style="display: block;"]) {
+    overflow: hidden;
+}
+.csa-reschedule-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 2px solid #2e7d32;
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.csa-calendar-wrapper.csa-reschedule-mode {
+    border: 2px solid #2e7d32;
+    padding: 12px;
+    border-radius: 8px;
+    background: #f6fff7;
+}
+
+.csa-time-slot.csa-reschedule-disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.csa-btn.csa-btn-reschedule-slot {
+    background: #2e7d32;
+    color: #fff;
+    border: none;
+}
+
+.csa-btn.csa-btn-reschedule-slot:hover {
+    background: #256528;
+}

@@ -40,6 +40,45 @@ class Holidays {
     }
 
     /**
+     * Get upcoming US holidays relative to today (past holidays roll into next year).
+     *
+     * @param string|null $timezone
+     * @return array
+     */
+    public static function get_upcoming_us_holidays($timezone = null) {
+        $tz = $timezone ? new \DateTimeZone($timezone) : new \DateTimeZone('UTC');
+        $now = new \DateTime('now', $tz);
+        $year = (int) $now->format('Y');
+
+        $current = self::get_us_holidays_for_year($year);
+        $next = self::get_us_holidays_for_year($year + 1);
+        $next_map = [];
+        foreach ($next as $holiday) {
+            if (!empty($holiday['key'])) {
+                $next_map[$holiday['key']] = $holiday;
+            }
+        }
+
+        $upcoming = [];
+        foreach ($current as $holiday) {
+            if (empty($holiday['date']) || empty($holiday['key'])) {
+                continue;
+            }
+            $date = \DateTime::createFromFormat('!Y-m-d', $holiday['date'], $tz);
+            if (!$date) {
+                continue;
+            }
+            if ($date < $now && isset($next_map[$holiday['key']])) {
+                $upcoming[] = $next_map[$holiday['key']];
+            } else {
+                $upcoming[] = $holiday;
+            }
+        }
+
+        return $upcoming;
+    }
+
+    /**
      * Get holiday key for a date.
      *
      * @param string $date

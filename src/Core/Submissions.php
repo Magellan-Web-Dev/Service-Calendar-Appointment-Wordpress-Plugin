@@ -88,6 +88,7 @@ class Submissions {
                     'time' => $r['appointment_time'],
                     'status' => isset($r['status']) ? $r['status'] : 'booked',
                     'created_at' => isset($r['created_at']) ? $r['created_at'] : null,
+                    'submitted_at_unix' => isset($r['submitted_at_unix']) ? $r['submitted_at_unix'] : null,
                     'all_data' => isset($r['submission_data']) ? $r['submission_data'] : [],
                 ];
 

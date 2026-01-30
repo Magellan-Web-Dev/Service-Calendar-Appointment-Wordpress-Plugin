@@ -397,6 +397,7 @@ class Database {
             appointment_date date NOT NULL,
             appointment_time time NOT NULL,
             submission_data longtext DEFAULT NULL,
+            submitted_at_unix bigint(20) DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY submission_date_time (submission_id, appointment_date, appointment_time)
@@ -409,6 +410,13 @@ class Database {
         $col = $wpdb->get_results("SHOW COLUMNS FROM {$appt_table_esc} LIKE 'submission_data'");
         if (empty($col)) {
             $alter = "ALTER TABLE {$appt_table} ADD COLUMN submission_data LONGTEXT DEFAULT NULL";
+            $wpdb->query($alter);
+        }
+
+        // Ensure submitted_at_unix column exists (adds column for older installs)
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$appt_table_esc} LIKE 'submitted_at_unix'");
+        if (empty($col)) {
+            $alter = "ALTER TABLE {$appt_table} ADD COLUMN submitted_at_unix BIGINT(20) DEFAULT NULL";
             $wpdb->query($alter);
         }
     }
@@ -429,6 +437,7 @@ class Database {
             'submission_id' => $submission_id ? intval($submission_id) : null,
             'appointment_date' => $utc['date'],
             'appointment_time' => $utc['time'],
+            'submitted_at_unix' => time(),
         ];
 
         if (!empty($submission_data)) {
@@ -440,7 +449,7 @@ class Database {
             $data['submission_data'] = $json;
         }
 
-        $formats = ['%d', '%s', '%s'];
+        $formats = ['%d', '%s', '%s', '%d'];
         if (isset($data['submission_data'])) { $formats[] = '%s'; }
         // Ensure appointments table exists (create on-demand if necessary)
         if (!$this->does_table_exist($this->appointments_table)) {
@@ -450,6 +459,10 @@ class Database {
         // Ensure submission_data column exists when we plan to insert it (fix for older installs)
         if (isset($data['submission_data']) && !$this->table_has_column($this->appointments_table, 'submission_data')) {
             $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN submission_data LONGTEXT DEFAULT NULL";
+            $wpdb->query($alter_sql);
+        }
+        if (!$this->table_has_column($this->appointments_table, 'submitted_at_unix')) {
+            $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN submitted_at_unix BIGINT(20) DEFAULT NULL";
             $wpdb->query($alter_sql);
         }
 
@@ -497,10 +510,12 @@ class Database {
             return [];
         }
 
+        $has_submission_data = $this->table_has_column($this->appointments_table, 'submission_data');
+        $has_submitted_at = $this->table_has_column($this->appointments_table, 'submitted_at_unix');
         // If submission_data column exists, include it; otherwise select without it
-        if ($this->table_has_column($this->appointments_table, 'submission_data')) {
+        if ($has_submission_data) {
             $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, created_at FROM {$this->appointments_table}
+                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
                 WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
                 ORDER BY appointment_date, appointment_time",
                 $start_date,
@@ -518,10 +533,13 @@ class Database {
                 } else {
                     $r['submission_data'] = [];
                 }
+                if (!isset($r['submitted_at_unix'])) {
+                    $r['submitted_at_unix'] = null;
+                }
             }
         } else {
             $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, created_at FROM {$this->appointments_table}
+                "SELECT id, submission_id, appointment_date, appointment_time, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
                 WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
                 ORDER BY appointment_date, appointment_time",
                 $start_date,
@@ -533,6 +551,9 @@ class Database {
                 $r['appointment_date'] = $local['date'];
                 $r['appointment_time'] = $local['time'];
                 $r['submission_data'] = [];
+                if (!isset($r['submitted_at_unix'])) {
+                    $r['submitted_at_unix'] = null;
+                }
             }
         }
 
@@ -552,9 +573,11 @@ class Database {
 
         $range = $this->get_utc_range_for_local_date($date);
 
-        if ($this->table_has_column($this->appointments_table, 'submission_data')) {
+        $has_submission_data = $this->table_has_column($this->appointments_table, 'submission_data');
+        $has_submitted_at = $this->table_has_column($this->appointments_table, 'submitted_at_unix');
+        if ($has_submission_data) {
             $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, created_at FROM {$this->appointments_table}
+                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
                 WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
                 ORDER BY appointment_date, appointment_time",
                 $range['start'],
@@ -571,10 +594,13 @@ class Database {
                 } else {
                     $r['submission_data'] = [];
                 }
+                if (!isset($r['submitted_at_unix'])) {
+                    $r['submitted_at_unix'] = null;
+                }
             }
         } else {
             $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, created_at FROM {$this->appointments_table}
+                "SELECT id, submission_id, appointment_date, appointment_time, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
                 WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
                 ORDER BY appointment_date, appointment_time",
                 $range['start'],
@@ -585,6 +611,9 @@ class Database {
                 $r['appointment_date'] = $local['date'];
                 $r['appointment_time'] = $local['time'];
                 $r['submission_data'] = [];
+                if (!isset($r['submitted_at_unix'])) {
+                    $r['submitted_at_unix'] = null;
+                }
             }
         }
 
@@ -604,6 +633,72 @@ class Database {
         }
 
         return $wpdb->delete($this->appointments_table, ['id' => intval($id)], ['%d']);
+    }
+
+    /**
+     * Get a single appointment row by appointment-table id.
+     *
+     * @param int $id
+     * @return array|null
+     */
+    public function get_appointment_by_id($id) {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return null;
+        }
+        $has_submission_data = $this->table_has_column($this->appointments_table, 'submission_data');
+        $has_submitted_at = $this->table_has_column($this->appointments_table, 'submitted_at_unix');
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, submission_id, appointment_date, appointment_time, " . ($has_submission_data ? "submission_data, " : "") . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at
+            FROM {$this->appointments_table} WHERE id = %d",
+            intval($id)
+        ), ARRAY_A);
+        if (!$row) {
+            return null;
+        }
+        $local = $this->convert_utc_to_local($row['appointment_date'], $row['appointment_time']);
+        $row['appointment_date'] = $local['date'];
+        $row['appointment_time'] = $local['time'];
+        if ($has_submission_data) {
+            if (!empty($row['submission_data'])) {
+                $decoded = json_decode($row['submission_data'], true);
+                $row['submission_data'] = $decoded !== null ? $decoded : $row['submission_data'];
+            } else {
+                $row['submission_data'] = [];
+            }
+        } else {
+            $row['submission_data'] = [];
+        }
+        if (!$has_submitted_at) {
+            $row['submitted_at_unix'] = null;
+        }
+        return $row;
+    }
+
+    /**
+     * Update an appointment's date/time by appointment-table id.
+     *
+     * @param int $id
+     * @param string $date
+     * @param string $time
+     * @return int|false
+     */
+    public function reschedule_appointment_by_id($id, $date, $time) {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return false;
+        }
+        $utc = $this->convert_local_to_utc($date, $time);
+        return $wpdb->update(
+            $this->appointments_table,
+            [
+                'appointment_date' => $utc['date'],
+                'appointment_time' => $utc['time'],
+            ],
+            ['id' => intval($id)],
+            ['%s', '%s'],
+            ['%d']
+        );
     }
 
     /**
@@ -648,6 +743,68 @@ class Database {
         $threshold = date('Y-m-d H:i:s', strtotime("-{$months} months"));
         $sql = $wpdb->prepare("DELETE FROM {$this->appointments_table} WHERE created_at < %s", $threshold);
         return $wpdb->query($sql);
+    }
+
+    /**
+     * Backfill submitted_at_unix from created_at using the WordPress timezone.
+     *
+     * @return void
+     */
+    public function maybe_backfill_submitted_at_unix() {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return;
+        }
+        if (!$this->table_has_column($this->appointments_table, 'submitted_at_unix')) {
+            $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN submitted_at_unix BIGINT(20) DEFAULT NULL";
+            $wpdb->query($alter_sql);
+        }
+
+        $rows = $wpdb->get_results(
+            "SELECT id, created_at, submitted_at_unix FROM {$this->appointments_table}
+            WHERE submitted_at_unix IS NULL OR submitted_at_unix = 0",
+            ARRAY_A
+        );
+        if (empty($rows)) {
+            return;
+        }
+
+        $tz = $this->get_wp_timezone();
+        foreach ($rows as $row) {
+            if (empty($row['created_at'])) {
+                continue;
+            }
+            $dt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $row['created_at'], $tz);
+            if (!$dt) {
+                continue;
+            }
+            $unix = $dt->getTimestamp();
+            $wpdb->update(
+                $this->appointments_table,
+                ['submitted_at_unix' => $unix],
+                ['id' => intval($row['id'])],
+                ['%d'],
+                ['%d']
+            );
+        }
+    }
+
+    /**
+     * Get WordPress timezone with fallback to UTC offset.
+     *
+     * @return \DateTimeZone
+     */
+    private function get_wp_timezone() {
+        $timezone_string = get_option('timezone_string');
+        if ($timezone_string) {
+            return new \DateTimeZone($timezone_string);
+        }
+        $offset = (float) get_option('gmt_offset', 0);
+        $hours = (int) $offset;
+        $minutes = abs($offset - $hours) * 60;
+        $sign = $offset >= 0 ? '+' : '-';
+        $tz = sprintf('UTC%s%02d:%02d', $sign, abs($hours), $minutes);
+        return new \DateTimeZone($tz);
     }
 
     /**

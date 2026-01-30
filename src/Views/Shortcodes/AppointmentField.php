@@ -76,11 +76,12 @@ class AppointmentField {
         } else {
             $html .= '<div class="csa-appointment-calendar">';
             $html .= '<div class="csa-calendar-widget"></div>';
+            $html .= '<div class="csa-calendar-time">';
             $html .= '<div class="csa-time-notification">Select A Service And Date To See Available Times.</div>';
             $html .= '<div class="csa-field csa-field-time">';
-            $html .= '<label>' . esc_html__('Time', $text_domain) . '</label>';
+            $html .= '<ul class="csa-appointment-time-list"><li class="csa-time-placeholder">' . esc_html__('Select a day first', $text_domain) . '</li></ul>';
             $html .= '<select name="appointment_time_select" class="csa-appointment-time-select"><option value="">' . esc_html__('Select a day first', $text_domain) . '</option></select>';
-            $html .= '</div>';
+            $html .= '</div></div>';
             $html .= '<input type="hidden" name="appointment_date" class="csa-appointment-date-hidden" value="" />';
             $html .= '<input type="hidden" name="appointment_time" class="csa-appointment-time-hidden" value="" />';
             if (!empty($elementor_prop)) {

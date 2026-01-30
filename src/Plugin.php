@@ -87,6 +87,7 @@ class Plugin {
     public function init() {
         $db = Core\Database::get_instance();
         $db->maybe_migrate_times_to_utc();
+        $db->maybe_backfill_submitted_at_unix();
         Core\Submissions::get_instance();
         Admin\Calendar::get_instance();
         Ajax\Handlers::get_instance();

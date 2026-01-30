@@ -112,6 +112,7 @@ class TimeShortcode {
         this.calendar = qs('.csa-calendar-widget', container);
         this.calendarWrapper = qs('.csa-appointment-calendar', container);
         this.timeNotification = qs('.csa-time-notification', container);
+        this.timeList = qs('.csa-appointment-time-list', container);
         this.timeSelect = qs('.csa-appointment-time-select', container);
         this.timeField = qs('.csa-field-time', container);
         this.hiddenDate = qs('.csa-appointment-date-hidden', container);
@@ -125,11 +126,20 @@ class TimeShortcode {
     }
 
     init() {
-        if (!this.calendar || !this.timeSelect) {
+        if (!this.calendar || !this.timeList) {
             return;
         }
 
-        on(this.timeSelect, 'change', () => this.handleTimeChange());
+        on(this.timeList, 'click', (event) => {
+            const target = event.target.closest('li[data-value]');
+            if (!target || !this.timeList.contains(target)) {
+                return;
+            }
+            this.handleTimeSelect(target);
+        });
+        if (this.timeSelect) {
+            on(this.timeSelect, 'change', () => this.handleTimeSelect(null));
+        }
 
         if (this.form) {
             on(this.form, 'csa:serviceChanged', () => {
@@ -155,15 +165,19 @@ class TimeShortcode {
     }
 
     updateTimeSelectState(placeholder, disabled) {
-        if (!this.timeSelect) {
+        if (!this.timeList) {
             return;
         }
         let html = '';
         if (placeholder) {
-            html = `<option value="" disabled selected>${placeholder}</option>`;
+            html = `<li class="csa-time-placeholder">${placeholder}</li>`;
         }
-        this.timeSelect.innerHTML = html;
-        this.timeSelect.disabled = !!disabled;
+        this.timeList.innerHTML = html;
+        if (this.timeSelect) {
+            const optionLabel = placeholder || 'Select time';
+            this.timeSelect.innerHTML = `<option value="" disabled selected>${optionLabel}</option>`;
+            this.timeSelect.disabled = !!disabled;
+        }
         if (this.timeField) {
             this.timeField.classList.toggle('csa-field-disabled', !!disabled);
         }
@@ -182,6 +196,12 @@ class TimeShortcode {
         }
         if (this.prop) {
             clearElementorPropValue(this.form, this.prop);
+        }
+        if (this.timeList) {
+            qsa('.csa-time-option', this.timeList).forEach((option) => option.classList.remove('selected'));
+        }
+        if (this.timeSelect) {
+            this.timeSelect.value = '';
         }
         this.updateCalendarDisabledState();
         this.updateTimeSelectState('Select a day first', true);
@@ -322,7 +342,7 @@ class TimeShortcode {
             return;
         }
 
-        const monthVal = `${this.currentYear}-${String(this.currentMonth + 1).padStart(2, '0')}`;
+        let monthVal = `${this.currentYear}-${String(this.currentMonth + 1).padStart(2, '0')}`;
         try {
             const response = await postAjax(this.config.ajax_url, {
                 action: 'csa_get_available_days',
@@ -332,6 +352,22 @@ class TimeShortcode {
 
             if (response && response.success && response.data && Array.isArray(response.data.days)) {
                 this.availableDays = new Set(response.data.days.map((day) => day.value));
+                if (this.availableDays.size === 0) {
+                    const next = await this.findNextAvailableMonthByDays(durationSeconds);
+                    if (next) {
+                        this.currentYear = next.year;
+                        this.currentMonth = next.month;
+                        monthVal = `${next.year}-${String(next.month + 1).padStart(2, '0')}`;
+                        const retry = await postAjax(this.config.ajax_url, {
+                            action: 'csa_get_available_days',
+                            month: monthVal,
+                            duration_seconds: durationSeconds,
+                        });
+                        if (retry && retry.success && retry.data && Array.isArray(retry.data.days)) {
+                            this.availableDays = new Set(retry.data.days.map((day) => day.value));
+                        }
+                    }
+                }
             } else {
                 this.availableDays = new Set();
             }
@@ -342,6 +378,40 @@ class TimeShortcode {
         this.renderCalendar();
         this.updateCalendarDisabledState();
         this.updateTimeNotificationState();
+    }
+
+    async findNextAvailableMonthByDays(durationSeconds) {
+        try {
+            let year = this.currentYear;
+            let monthIndex = this.currentMonth;
+            for (let i = 0; i < 12; i += 1) {
+                const next = this.incrementMonth(year, monthIndex);
+                year = next.year;
+                monthIndex = next.month;
+                const monthVal = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+                const response = await postAjax(this.config.ajax_url, {
+                    action: 'csa_get_available_days',
+                    month: monthVal,
+                    duration_seconds: durationSeconds,
+                });
+                if (response && response.success && response.data && Array.isArray(response.data.days) && response.data.days.length) {
+                    return { year, month: monthIndex };
+                }
+            }
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    incrementMonth(year, monthIndex) {
+        let nextMonth = monthIndex + 1;
+        let nextYear = year;
+        if (nextMonth > 11) {
+            nextMonth = 0;
+            nextYear += 1;
+        }
+        return { year: nextYear, month: nextMonth };
     }
 
     async selectDate(dateString) {
@@ -388,12 +458,22 @@ class TimeShortcode {
                 if (times.length === 0) {
                     this.updateTimeSelectState('No times available', true);
                 } else {
-                    let html = '<option value="" disabled selected>Select time</option>';
+                    let html = '';
                     times.forEach((time) => {
-                        html += `<option value="${time.value}">${time.label}</option>`;
+                        html += '<li class="csa-time-option" data-value="' + time.value + '">' +
+                            '<input type="radio" class="csa-appointment-time-radio" name="appointment_time_select" value="' + time.value + '" hidden />' +
+                            '<span>' + time.label + '</span>' +
+                            '</li>';
                     });
-                    this.timeSelect.innerHTML = html;
-                    this.timeSelect.disabled = false;
+                    this.timeList.innerHTML = html;
+                    if (this.timeSelect) {
+                        let optionsHtml = '<option value="" disabled selected>Select time</option>';
+                        times.forEach((time) => {
+                            optionsHtml += '<option value="' + time.value + '">' + time.label + '</option>';
+                        });
+                        this.timeSelect.innerHTML = optionsHtml;
+                        this.timeSelect.disabled = false;
+                    }
                     if (this.timeField) {
                         this.timeField.classList.remove('csa-field-disabled');
                     }
@@ -406,10 +486,24 @@ class TimeShortcode {
         }
     }
 
-    handleTimeChange() {
-        const timeVal = this.timeSelect ? this.timeSelect.value : '';
+    handleTimeSelect(target) {
+        const timeVal = target
+            ? (target.dataset.value || '')
+            : (this.timeSelect ? this.timeSelect.value : '');
         if (!timeVal || !this.selectedDate) {
             return;
+        }
+
+        qsa('.csa-time-option', this.timeList).forEach((option) => {
+            const isSelected = option.dataset.value === timeVal;
+            option.classList.toggle('selected', isSelected);
+            const input = qs('input', option);
+            if (input) {
+                input.checked = isSelected;
+            }
+        });
+        if (this.timeSelect && this.timeSelect.value !== timeVal) {
+            this.timeSelect.value = timeVal;
         }
 
         if (this.hiddenTime) {

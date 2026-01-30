@@ -12,6 +12,7 @@ export class AdminCalendar {
     constructor() {
         this.config = window.csaAdmin || null;
         this.calendar = qs('.csa-calendar');
+        this.calendarWrapper = qs('.csa-calendar-wrapper');
         this.body = document.body;
         this.ajaxInFlight = 0;
         this.currentMonth = this.calendar ? parseInt(this.calendar.dataset.month, 10) : null;
@@ -25,6 +26,13 @@ export class AdminCalendar {
         this.holidayBaseline = '';
         this.saveHolidayButton = qs('#csa-save-holiday-availability');
         this.keepLoading = false;
+        this.rescheduleState = {
+            active: false,
+            apptId: null,
+            durationSeconds: 0,
+        };
+        this.rescheduleBanner = qs('#csa-reschedule-banner');
+        this.rescheduleCancel = qs('#csa-reschedule-cancel');
     }
 
     /**
@@ -49,6 +57,7 @@ export class AdminCalendar {
         this.bindDayRendered();
         this.bindLoadSubmissionFields();
         this.bindTimezoneSelector();
+        this.bindRescheduleControls();
 
         this.updateNavButtons();
         this.renderWeeklyAvailability();
@@ -205,6 +214,30 @@ export class AdminCalendar {
             }
         });
 
+        delegate(document, 'click', '.csa-btn-reschedule', (event, target) => {
+            const apptId = target.dataset.apptId ? parseInt(target.dataset.apptId, 10) : 0;
+            const duration = target.dataset.duration ? parseInt(target.dataset.duration, 10) : 0;
+            if (!apptId) {
+                return;
+            }
+            this.enterRescheduleMode({
+                apptId,
+                durationSeconds: Number.isFinite(duration) ? duration : 0,
+            });
+        });
+
+        delegate(document, 'click', '.csa-btn-reschedule-slot', async (event, target) => {
+            if (!this.rescheduleState.active || !this.rescheduleState.apptId) {
+                return;
+            }
+            const date = target.dataset.date || '';
+            const time = target.dataset.time || '';
+            if (!date || !time) {
+                return;
+            }
+            await this.submitReschedule(date, time);
+        });
+
         delegate(document, 'click', '.csa-btn-block', async (event, target) => {
             const date = target.dataset.date;
             const time = target.dataset.time;
@@ -238,6 +271,9 @@ export class AdminCalendar {
         });
 
         delegate(document, 'click', '.csa-btn-allow', async (event, target) => {
+            if (this.rescheduleState.active) {
+                return;
+            }
             const date = target.dataset.date;
             const time = target.dataset.time;
 
@@ -274,6 +310,9 @@ export class AdminCalendar {
      */
     bindBulkActions() {
         delegate(document, 'click', '#csa-block-all, #csa-unblock-all', async (event, target) => {
+            if (this.rescheduleState.active) {
+                return;
+            }
             const isBlock = target.id === 'csa-block-all';
             const dayControls = qs('#csa-day-controls');
             const date = dayControls ? dayControls.dataset.date : '';
@@ -628,8 +667,69 @@ export class AdminCalendar {
             modalTimezone: qs('#csa-modal-timezone'),
             timezoneLabel: this.config.timezone_label || '',
             serviceDurationMap: this.config.services_duration_map || {},
+            timezoneName: this.config.timezone || '',
+            rescheduleState: this.rescheduleState,
         });
         document.dispatchEvent(new CustomEvent('csa:dayRendered', { detail: data }));
+    }
+
+    bindRescheduleControls() {
+        if (this.rescheduleCancel) {
+            on(this.rescheduleCancel, 'click', () => this.exitRescheduleMode());
+        }
+    }
+
+    enterRescheduleMode({ apptId, durationSeconds }) {
+        this.rescheduleState = {
+            active: true,
+            apptId,
+            durationSeconds: durationSeconds || 0,
+        };
+        if (this.calendarWrapper) {
+            this.calendarWrapper.classList.add('csa-reschedule-mode');
+        }
+        if (this.rescheduleBanner) {
+            this.rescheduleBanner.style.display = 'flex';
+        }
+        const modal = qs('#csa-day-detail-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    exitRescheduleMode() {
+        this.rescheduleState = {
+            active: false,
+            apptId: null,
+            durationSeconds: 0,
+        };
+        if (this.calendarWrapper) {
+            this.calendarWrapper.classList.remove('csa-reschedule-mode');
+        }
+        if (this.rescheduleBanner) {
+            this.rescheduleBanner.style.display = 'none';
+        }
+    }
+
+    async submitReschedule(date, time) {
+        try {
+            const response = await this.request({
+                action: 'csa_reschedule_appointment',
+                nonce: this.config.nonce,
+                appt_id: this.rescheduleState.apptId,
+                date,
+                time,
+            });
+            if (response.success) {
+                this.exitRescheduleMode();
+                window.location.reload();
+            } else {
+                const message = response.data && response.data.message ? response.data.message : 'Failed to reschedule appointment';
+                window.alert(message);
+            }
+        } catch (error) {
+            window.alert('Failed to reschedule appointment');
+        }
     }
 
     /**
@@ -643,6 +743,9 @@ export class AdminCalendar {
      * @returns {Promise<void>}
      */
     async handleBlockToggle({ action, date, time, errorMessage }) {
+        if (this.rescheduleState.active) {
+            return;
+        }
         try {
             const response = await this.request({
                 action,

@@ -11,9 +11,11 @@ export class AdminDayDetailsRenderer {
      * @param {HTMLElement|null} options.modalTimezone
      * @param {string} [options.timezoneLabel]
      * @param {Object} [options.serviceDurationMap]
+     * @param {string} [options.timezoneName]
+     * @param {Object} [options.rescheduleState]
      * @returns {void}
      */
-    static render({ data, timeSlots, modalDate, modalTimezone, timezoneLabel, serviceDurationMap }) {
+    static render({ data, timeSlots, modalDate, modalTimezone, timezoneLabel, serviceDurationMap, timezoneName, rescheduleState }) {
         if (!data) {
             return;
         }
@@ -21,6 +23,7 @@ export class AdminDayDetailsRenderer {
         const durationMap = normalizeDurationMap(serviceDurationMap || {});
         const occupiedTimes = buildOccupiedTimes(data.time_slots || [], durationMap);
         applyAppointmentDurations(data.time_slots || [], durationMap);
+        const isReschedule = !!(rescheduleState && rescheduleState.active);
 
         const formattedDate = new Date(`${data.date}T00:00:00`).toLocaleDateString('en-US', {
             weekday: 'long',
@@ -34,7 +37,7 @@ export class AdminDayDetailsRenderer {
         }
         if (modalTimezone) {
             const label = timezoneLabel || data.timezone_label || '';
-            modalTimezone.textContent = label ? `Times shown in the ${label} time zone` : '';
+            modalTimezone.textContent = label ? `Times shown are based off the ${label} time zone` : '';
         }
 
         const existingControls = qs('#csa-day-controls');
@@ -50,16 +53,18 @@ export class AdminDayDetailsRenderer {
             controls.dataset.date = data.date;
             controls.innerHTML = '<button id="csa-block-all" class="csa-btn">Block All</button> ' +
                 '<button id="csa-unblock-all" class="csa-btn">Unblock All</button>';
-            timeSlots.insertAdjacentElement('beforebegin', controls);
+            if (!isReschedule) {
+                timeSlots.insertAdjacentElement('beforebegin', controls);
+            }
             const slotsHtml = (data.time_slots || [])
-                .map((slot) => renderSlot(slot, data.date, occupiedTimes))
+                .map((slot) => renderSlot(slot, data.date, occupiedTimes, timezoneName, isReschedule))
                 .join('');
             timeSlots.innerHTML = slotsHtml;
         }
     }
 }
 
-const renderSlot = (slot, date, occupiedTimes) => {
+const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
     if (slot.is_occupied) {
         return '';
     }
@@ -76,7 +81,9 @@ const renderSlot = (slot, date, occupiedTimes) => {
         slotClass = 'booked';
         const first = slot.appointments;
         const serviceLabel = first.service || '';
-        const createdLabel = first.created_at ? formatTimestamp(first.created_at) : '';
+        const createdLabel = first.submitted_at_unix
+            ? formatTimestamp(first.submitted_at_unix, timezoneName)
+            : (first.created_at ? formatTimestamp(first.created_at, timezoneName) : '');
         const startRaw = first.time || slot.time;
         const startLabel = safeFormatTime(startRaw);
         let endLabel = safeFormatTime(first.end_time);
@@ -95,18 +102,22 @@ const renderSlot = (slot, date, occupiedTimes) => {
             `${createdLabel ? `<div class="csa-time-slot-created"><strong>Submitted:</strong> ${createdLabel}</div>` : ''}` +
             '</div>' +
             `<span class="csa-time-slot-status ${first.status || 'booked'}">${first.status || 'booked'}</span>`;
-        actionsHtml = `<button class="csa-btn csa-btn-view" data-time="${slot.time}">View</button>`;
+        actionsHtml = isReschedule ? '' : `<button class="csa-btn csa-btn-view" data-time="${slot.time}">View</button>`;
     } else if (slot.is_blocked_explicit) {
         slotClass = 'blocked';
         statusHtml = '<div class="csa-time-slot-info"><em>Blocked by admin</em></div>';
-        actionsHtml = `<button class="csa-btn csa-btn-unblock" data-date="${date}" data-time="${slot.time}">Unblock</button>`;
+        actionsHtml = isReschedule ? '' : `<button class="csa-btn csa-btn-unblock" data-date="${date}" data-time="${slot.time}">Unblock</button>`;
     } else if (!slot.is_default_available) {
         slotClass = 'unavailable';
         statusHtml = '<div class="csa-time-slot-info"><em>Unavailable (default)</em></div>';
-        actionsHtml = `<button class="csa-btn csa-btn-allow" data-date="${date}" data-time="${slot.time}">Allow</button>`;
+        actionsHtml = isReschedule ? '' : `<button class="csa-btn csa-btn-allow" data-date="${date}" data-time="${slot.time}">Allow</button>`;
     } else {
         statusHtml = '<div class="csa-time-slot-info"><em>Available</em></div>';
-        actionsHtml = `<button class="csa-btn csa-btn-block" data-date="${date}" data-time="${slot.time}">Block</button>`;
+        if (isReschedule) {
+            actionsHtml = `<button class="csa-btn csa-btn-reschedule-slot" data-date="${date}" data-time="${slot.time}">Reschedule here</button>`;
+        } else {
+            actionsHtml = `<button class="csa-btn csa-btn-block" data-date="${date}" data-time="${slot.time}">Block</button>`;
+        }
     }
 
     let appointmentListHtml = '';
@@ -115,7 +126,8 @@ const renderSlot = (slot, date, occupiedTimes) => {
         appointmentListHtml = `<div class="csa-appointment-list" style="display:none;">${listItem}</div>`;
     }
 
-    return `<div class="csa-time-slot ${slotClass}" data-time="${slot.time}">` +
+    const rescheduleClass = isReschedule && slot.appointments ? ' csa-reschedule-disabled' : '';
+    return `<div class="csa-time-slot ${slotClass}${rescheduleClass}" data-time="${slot.time}">` +
         `<div class="csa-time-slot-time">${slotClass === 'booked' ? rangeLabel : timeFormatted}</div>` +
         statusHtml +
         `<div class="csa-time-slot-actions">${actionsHtml}</div>` +
@@ -158,7 +170,10 @@ const renderAppointment = (appt, date) => {
         `<div class="csa-appointment-meta">${metaHtml}</div>` +
         allDataHtml +
         '</div>' +
-        `<div class="csa-appointment-actions"><button class="csa-btn csa-btn-delete"${deleteData} data-date="${date}" data-time="${appt.time}">Delete</button></div>` +
+        `<div class="csa-appointment-actions">` +
+        `<button class="csa-btn csa-btn-reschedule" data-appt-id="${appt.appt_id || ''}" data-duration="${appt.duration_seconds || ''}">Reschedule</button>` +
+        `<button class="csa-btn csa-btn-delete"${deleteData} data-date="${date}" data-time="${appt.time}">Delete</button>` +
+        '</div>' +
         '</div>';
 };
 
@@ -212,21 +227,33 @@ const isTimeField = (key) => {
     return false;
 };
 
-const formatTimestamp = (value) => {
+const formatTimestamp = (value, timezoneName) => {
     if (!value) {
         return '';
     }
-    const date = new Date(value.replace(' ', 'T'));
-    if (Number.isNaN(date.getTime())) {
-        return value;
+    let date;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        date = new Date(value * 1000);
+    } else if (typeof value === 'string' && /^\d{10,}$/.test(value)) {
+        date = new Date(Number(value) * 1000);
+    } else {
+        const normalized = typeof value === 'string' ? value.replace(' ', 'T') : String(value);
+        date = new Date(normalized);
     }
-    return date.toLocaleString('en-US', {
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+    const options = {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-    });
+    };
+    if (timezoneName) {
+        return new Intl.DateTimeFormat('en-US', { ...options, timeZone: timezoneName }).format(date);
+    }
+    return date.toLocaleString('en-US', options);
 };
 
 const safeFormatTime = (value) => {
