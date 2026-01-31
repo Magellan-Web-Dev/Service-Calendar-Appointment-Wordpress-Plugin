@@ -80,6 +80,7 @@ class Handlers {
         add_action('wp_ajax_csa_get_available_days', [$this, 'get_available_days']);
         add_action('wp_ajax_nopriv_csa_get_available_days', [$this, 'get_available_days']);
         add_action('wp_ajax_csa_reschedule_appointment', [$this, 'reschedule_appointment']);
+        add_action('wp_ajax_csa_create_custom_appointment', [$this, 'create_custom_appointment']);
     }
 
     /**
@@ -298,6 +299,11 @@ class Handlers {
                                     }
                                 }
                             }
+                            if (!empty($full['all_data']['csa_custom_appointment'])) {
+                                $custom_title = isset($full['all_data']['csa_custom_title']) ? $full['all_data']['csa_custom_title'] : '';
+                                $custom_title = is_string($custom_title) ? trim($custom_title) : '';
+                                $full['name'] = $custom_title !== '' ? $custom_title : __('Custom Appointment', self::TEXT_DOMAIN);
+                            }
                         }
                         $duration_seconds = $this->get_appointment_duration_seconds($full, $service_duration_map);
                         if ($duration_seconds > 0) {
@@ -445,6 +451,65 @@ class Handlers {
         }
 
         wp_send_json_success(['message' => __('Appointment rescheduled', self::TEXT_DOMAIN)]);
+    }
+
+    /**
+     * AJAX: create a custom appointment booking.
+     *
+     * @return void
+     */
+    public function create_custom_appointment() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+
+        if (!current_user_can(self::CAPABILITY)) {
+            wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
+        }
+
+        $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
+        $time = isset($_POST['time']) ? sanitize_text_field($_POST['time']) : '';
+        $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $title = isset($_POST['title']) ? sanitize_text_field($_POST['title']) : '';
+        $notes = isset($_POST['notes']) ? sanitize_textarea_field($_POST['notes']) : '';
+
+        if (empty($date) || empty($time) || $duration_seconds <= 0) {
+            wp_send_json_error(['message' => __('Invalid parameters', self::TEXT_DOMAIN)]);
+        }
+
+        $time = strlen($time) >= 5 ? substr($time, 0, 5) : $time;
+
+        $db = Database::get_instance();
+        $submissions = Submissions::get_instance();
+        $appointments = $submissions->get_appointments_for_date($date);
+        if (!is_array($appointments)) {
+            $appointments = [];
+        }
+        $service_duration_map = $this->get_service_duration_map();
+        $booked_set = $this->build_booked_set($appointments, $service_duration_map);
+        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date));
+        $hours = $this->get_business_hours();
+        $hours_set = array_fill_keys($hours, true);
+        $slots_needed = $this->get_slots_needed($duration_seconds);
+
+        if (!$this->is_time_range_open($time, $slots_needed, $blocked_set, $booked_set, $hours_set)) {
+            wp_send_json_error(['message' => __('That time range is not available for a custom appointment.', self::TEXT_DOMAIN)]);
+        }
+
+        $submission_data = [
+            'csa_custom_appointment' => true,
+            'csa_custom_title' => $title,
+            'csa_custom_duration_seconds' => $duration_seconds,
+            'csa_custom_notes' => $notes,
+        ];
+
+        $insert_id = $db->insert_appointment(null, $date, $time, $submission_data);
+        if (!$insert_id) {
+            wp_send_json_error(['message' => __('Failed to schedule custom appointment', self::TEXT_DOMAIN)]);
+        }
+
+        wp_send_json_success([
+            'message' => __('Custom appointment scheduled', self::TEXT_DOMAIN),
+            'appointment_id' => $insert_id,
+        ]);
     }
 
     /**
@@ -1038,6 +1103,11 @@ class Handlers {
         if (isset($appointment['duration_seconds']) && is_numeric($appointment['duration_seconds'])) {
             return (int) $appointment['duration_seconds'];
         }
+        if (!empty($appointment['all_data']) && is_array($appointment['all_data'])) {
+            if (isset($appointment['all_data']['csa_custom_duration_seconds']) && is_numeric($appointment['all_data']['csa_custom_duration_seconds'])) {
+                return (int) $appointment['all_data']['csa_custom_duration_seconds'];
+            }
+        }
         if (!empty($appointment['service'])) {
             $service_key = $this->normalize_service_key($appointment['service']);
             if ($service_key !== '' && isset($service_duration_map[$service_key])) {
@@ -1238,6 +1308,29 @@ class Handlers {
             }
         }
 
+        return true;
+    }
+
+    /**
+     * Check if a time range is open based on hours, booked, and blocked sets.
+     *
+     * @param string $start_time
+     * @param int $slots_needed
+     * @param array $blocked_set
+     * @param array $booked_set
+     * @param array $hours_set
+     * @return bool
+     */
+    private function is_time_range_open($start_time, $slots_needed, $blocked_set, $booked_set, $hours_set) {
+        for ($i = 0; $i < $slots_needed; $i++) {
+            $slot_time = $i === 0 ? $start_time : $this->add_minutes($start_time, 30 * $i);
+            if (!$slot_time || !isset($hours_set[$slot_time])) {
+                return false;
+            }
+            if (isset($blocked_set[$slot_time]) || isset($booked_set[$slot_time])) {
+                return false;
+            }
+        }
         return true;
     }
 }

@@ -1,4 +1,4 @@
-import { qs, qsa, delegate, on, postAjax, scrollToTopOnLoad } from './utils.js';
+import { qs, qsa, delegate, on, postAjax, scrollToTopOnLoad, formatTime } from './utils.js';
 import { AdminDayDetailsRenderer } from './render/admin/day-details-renderer.js';
 import { AdminDaySummaryRenderer } from './render/admin/day-summary-renderer.js';
 import { AdminHolidayAvailabilityRenderer } from './render/admin/holiday-availability-renderer.js';
@@ -33,6 +33,13 @@ export class AdminCalendar {
         };
         this.rescheduleBanner = qs('#csa-reschedule-banner');
         this.rescheduleCancel = qs('#csa-reschedule-cancel');
+        this.currentDayDetails = null;
+        this.daySlotMap = {};
+        this.customBookingState = {
+            active: false,
+            date: '',
+            time: '',
+        };
     }
 
     /**
@@ -58,6 +65,7 @@ export class AdminCalendar {
         this.bindLoadSubmissionFields();
         this.bindTimezoneSelector();
         this.bindRescheduleControls();
+        this.bindCustomAppointments();
 
         this.updateNavButtons();
         this.renderWeeklyAvailability();
@@ -239,6 +247,9 @@ export class AdminCalendar {
         });
 
         delegate(document, 'click', '.csa-btn-block', async (event, target) => {
+            if (this.customBookingState.active) {
+                return;
+            }
             const date = target.dataset.date;
             const time = target.dataset.time;
 
@@ -255,6 +266,9 @@ export class AdminCalendar {
         });
 
         delegate(document, 'click', '.csa-btn-unblock', async (event, target) => {
+            if (this.customBookingState.active) {
+                return;
+            }
             const date = target.dataset.date;
             const time = target.dataset.time;
 
@@ -272,6 +286,9 @@ export class AdminCalendar {
 
         delegate(document, 'click', '.csa-btn-allow', async (event, target) => {
             if (this.rescheduleState.active) {
+                return;
+            }
+            if (this.customBookingState.active) {
                 return;
             }
             const date = target.dataset.date;
@@ -311,6 +328,9 @@ export class AdminCalendar {
     bindBulkActions() {
         delegate(document, 'click', '#csa-block-all, #csa-unblock-all', async (event, target) => {
             if (this.rescheduleState.active) {
+                return;
+            }
+            if (this.customBookingState.active) {
                 return;
             }
             const isBlock = target.id === 'csa-block-all';
@@ -660,6 +680,9 @@ export class AdminCalendar {
      * @returns {void}
      */
     renderDayDetails(data) {
+        this.currentDayDetails = data;
+        this.daySlotMap = this.buildSlotMap(data && data.time_slots ? data.time_slots : []);
+        this.exitCustomBookingMode();
         AdminDayDetailsRenderer.render({
             data,
             timeSlots: qs('#csa-time-slots'),
@@ -677,6 +700,333 @@ export class AdminCalendar {
         if (this.rescheduleCancel) {
             on(this.rescheduleCancel, 'click', () => this.exitRescheduleMode());
         }
+    }
+
+    bindCustomAppointments() {
+        delegate(document, 'click', '#csa-schedule-custom-appointment', (event, target) => {
+            event.preventDefault();
+            if (this.rescheduleState.active) {
+                return;
+            }
+            if (this.customBookingState.active) {
+                this.exitCustomBookingMode();
+                return;
+            }
+            this.enterCustomBookingMode();
+        });
+
+        delegate(document, 'click', '.csa-btn-custom-book', (event, target) => {
+            if (!this.customBookingState.active) {
+                return;
+            }
+            const date = target.dataset.date || '';
+            const time = target.dataset.time || '';
+            if (!date || !time) {
+                return;
+            }
+            this.openCustomAppointmentModal({ date, time });
+        });
+
+        delegate(document, 'click', '#csa-custom-appointment-modal .csa-modal-close, #csa-custom-appointment-modal .csa-modal-overlay', () => {
+            this.closeCustomAppointmentModal();
+        });
+
+        const cancel = qs('#csa-custom-appointment-cancel');
+        if (cancel) {
+            on(cancel, 'click', (event) => {
+                event.preventDefault();
+                this.closeCustomAppointmentModal();
+            });
+        }
+
+        const submit = qs('#csa-custom-appointment-submit');
+        if (submit) {
+            on(submit, 'click', (event) => {
+                event.preventDefault();
+                this.submitCustomAppointment();
+            });
+        }
+
+        const durationSelect = qs('#csa-custom-appointment-duration');
+        if (durationSelect) {
+            on(durationSelect, 'change', () => this.updateCustomAppointmentEndTime());
+        }
+    }
+
+    enterCustomBookingMode() {
+        if (!this.currentDayDetails || !this.currentDayDetails.date) {
+            return;
+        }
+        this.customBookingState = {
+            active: true,
+            date: this.currentDayDetails.date,
+            time: '',
+        };
+        const modal = qs('#csa-day-detail-modal');
+        if (modal) {
+            modal.classList.add('csa-custom-mode');
+        }
+
+        const scheduleButton = qs('#csa-schedule-custom-appointment');
+        if (scheduleButton) {
+            scheduleButton.textContent = 'Cancel Custom Appointment';
+        }
+
+        qsa('#csa-day-controls button').forEach((button) => {
+            if (button.id !== 'csa-schedule-custom-appointment') {
+                button.disabled = true;
+            }
+        });
+
+        qsa('#csa-time-slots .csa-time-slot').forEach((slot) => {
+            const time = slot.dataset.time;
+            if (!time) {
+                return;
+            }
+            const data = this.daySlotMap[time];
+            if (!this.isCustomBookableSlot(data)) {
+                return;
+            }
+            slot.classList.add('csa-custom-available');
+            const actions = qs('.csa-time-slot-actions', slot);
+            if (!actions) {
+                return;
+            }
+            if (!actions.dataset.originalHtml) {
+                actions.dataset.originalHtml = actions.innerHTML;
+            }
+            actions.innerHTML = `<button class="csa-btn csa-btn-view csa-btn-custom-book" data-date="${this.customBookingState.date}" data-time="${time}">Book timeslot</button>`;
+        });
+    }
+
+    exitCustomBookingMode() {
+        if (!this.customBookingState.active) {
+            return;
+        }
+        this.customBookingState = {
+            active: false,
+            date: '',
+            time: '',
+        };
+        const modal = qs('#csa-day-detail-modal');
+        if (modal) {
+            modal.classList.remove('csa-custom-mode');
+        }
+        const scheduleButton = qs('#csa-schedule-custom-appointment');
+        if (scheduleButton) {
+            scheduleButton.textContent = 'Schedule Custom Appointment';
+        }
+        qsa('#csa-day-controls button').forEach((button) => {
+            button.disabled = false;
+        });
+        qsa('#csa-time-slots .csa-time-slot').forEach((slot) => {
+            slot.classList.remove('csa-custom-available');
+            const actions = qs('.csa-time-slot-actions', slot);
+            if (actions && actions.dataset.originalHtml) {
+                actions.innerHTML = actions.dataset.originalHtml;
+                delete actions.dataset.originalHtml;
+            }
+        });
+    }
+
+    openCustomAppointmentModal({ date, time }) {
+        const modal = qs('#csa-custom-appointment-modal');
+        if (!modal) {
+            return;
+        }
+        this.customBookingState.date = date;
+        this.customBookingState.time = time;
+        const dateLabel = qs('#csa-custom-appointment-date');
+        const timeLabel = qs('#csa-custom-appointment-time');
+        if (dateLabel) {
+            dateLabel.textContent = date;
+        }
+        if (timeLabel) {
+            timeLabel.textContent = formatTime(time);
+        }
+
+        const titleInput = qs('#csa-custom-appointment-title');
+        if (titleInput) {
+            titleInput.value = '';
+        }
+        const notesInput = qs('#csa-custom-appointment-notes');
+        if (notesInput) {
+            notesInput.value = '';
+        }
+
+        const durationSelect = qs('#csa-custom-appointment-duration');
+        const warning = qs('#csa-custom-appointment-warning');
+        const submit = qs('#csa-custom-appointment-submit');
+
+        if (durationSelect) {
+            durationSelect.innerHTML = '';
+            const options = this.getAvailableCustomDurations(time);
+            options.forEach((option) => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.label;
+                durationSelect.appendChild(opt);
+            });
+            durationSelect.disabled = options.length === 0;
+            if (options.length === 0) {
+                if (warning) {
+                    warning.textContent = 'No available durations for this start time.';
+                    warning.style.display = 'block';
+                }
+                if (submit) {
+                    submit.disabled = true;
+                }
+            } else {
+                if (warning) {
+                    warning.textContent = '';
+                    warning.style.display = 'none';
+                }
+                if (submit) {
+                    submit.disabled = false;
+                }
+            }
+        }
+
+        this.updateCustomAppointmentEndTime();
+        modal.style.display = 'block';
+    }
+
+    closeCustomAppointmentModal() {
+        const modal = qs('#csa-custom-appointment-modal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    updateCustomAppointmentEndTime() {
+        const endLabel = qs('#csa-custom-appointment-end');
+        const durationSelect = qs('#csa-custom-appointment-duration');
+        if (!endLabel || !durationSelect || !this.customBookingState.time) {
+            return;
+        }
+        const durationSeconds = parseInt(durationSelect.value, 10);
+        if (!Number.isFinite(durationSeconds)) {
+            endLabel.textContent = '';
+            return;
+        }
+        const endTime = addMinutesToTime(this.customBookingState.time, Math.ceil(durationSeconds / 60));
+        endLabel.textContent = endTime ? formatTime(endTime) : '';
+    }
+
+    async submitCustomAppointment() {
+        const date = this.customBookingState.date;
+        const time = this.customBookingState.time;
+        const durationSelect = qs('#csa-custom-appointment-duration');
+        if (!date || !time || !durationSelect) {
+            return;
+        }
+        const durationSeconds = parseInt(durationSelect.value, 10);
+        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+            window.alert('Please choose a valid duration.');
+            return;
+        }
+
+        const titleInput = qs('#csa-custom-appointment-title');
+        const title = titleInput ? titleInput.value.trim() : '';
+        const notesInput = qs('#csa-custom-appointment-notes');
+        const notes = notesInput ? notesInput.value.trim() : '';
+        const submit = qs('#csa-custom-appointment-submit');
+
+        if (submit) {
+            submit.disabled = true;
+        }
+
+        try {
+            const response = await this.request({
+                action: 'csa_create_custom_appointment',
+                nonce: this.config.nonce,
+                date,
+                time,
+                duration_seconds: durationSeconds,
+                title,
+                notes,
+            });
+
+            if (response.success) {
+                this.closeCustomAppointmentModal();
+                this.exitCustomBookingMode();
+                this.showDayDetails(date);
+            } else {
+                const message = response.data && response.data.message ? response.data.message : 'Failed to schedule appointment';
+                window.alert(message);
+            }
+        } catch (error) {
+            window.alert('Failed to schedule appointment');
+        } finally {
+            if (submit) {
+                submit.disabled = false;
+            }
+        }
+    }
+
+    getAvailableCustomDurations(startTime) {
+        const options = this.getDurationOptions();
+        return options.filter((option) => this.isCustomRangeAvailable(startTime, option.value));
+    }
+
+    getDurationOptions() {
+        const options = this.config && this.config.service_duration_options ? this.config.service_duration_options : {};
+        let entries = Object.entries(options).map(([value, label]) => ({
+            value: parseInt(value, 10),
+            label,
+        }));
+        entries = entries.filter((entry) => Number.isFinite(entry.value));
+        if (!entries.length && this.config && this.config.services_duration_map) {
+            const unique = new Set(Object.values(this.config.services_duration_map));
+            entries = Array.from(unique)
+                .filter((value) => Number.isFinite(value))
+                .map((value) => ({
+                    value,
+                    label: `${Math.round(value / 60)} minutes`,
+                }));
+        }
+        return entries.sort((a, b) => a.value - b.value);
+    }
+
+    isCustomRangeAvailable(startTime, durationSeconds) {
+        if (!startTime || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+            return false;
+        }
+        const slotsNeeded = Math.ceil(durationSeconds / 1800);
+        for (let i = 0; i < slotsNeeded; i += 1) {
+            const slotTime = i === 0 ? startTime : addMinutesToTime(startTime, 30 * i);
+            if (!slotTime) {
+                return false;
+            }
+            const slot = this.daySlotMap[slotTime];
+            if (!this.isCustomBookableSlot(slot)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    isCustomBookableSlot(slot) {
+        if (!slot || slot.is_occupied || slot.appointments) {
+            return false;
+        }
+        if (slot.is_blocked_explicit) {
+            return false;
+        }
+        return true;
+    }
+
+    buildSlotMap(timeSlots) {
+        const map = {};
+        if (!Array.isArray(timeSlots)) {
+            return map;
+        }
+        timeSlots.forEach((slot) => {
+            if (slot && slot.time) {
+                map[slot.time] = slot;
+            }
+        });
+        return map;
     }
 
     enterRescheduleMode({ apptId, durationSeconds }) {
@@ -744,6 +1094,9 @@ export class AdminCalendar {
      */
     async handleBlockToggle({ action, date, time, errorMessage }) {
         if (this.rescheduleState.active) {
+            return;
+        }
+        if (this.customBookingState.active) {
             return;
         }
         try {
@@ -860,6 +1213,27 @@ export class AdminCalendar {
         }
     }
 }
+
+const addMinutesToTime = (value, minutesToAdd) => {
+    if (!value || typeof value !== 'string' || !Number.isFinite(minutesToAdd)) {
+        return '';
+    }
+    const normalized = value.trim();
+    const timePart = normalized.includes('T') ? normalized.split('T')[1] : normalized;
+    const pieces = timePart.split(':');
+    if (pieces.length < 2) {
+        return '';
+    }
+    const hours = parseInt(pieces[0], 10);
+    const minutes = parseInt(pieces[1], 10);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+        return '';
+    }
+    const total = hours * 60 + minutes + minutesToAdd;
+    const nextHours = Math.floor(total / 60);
+    const nextMinutes = total % 60;
+    return `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
+};
 
 const adminCalendar = new AdminCalendar();
 adminCalendar.init();

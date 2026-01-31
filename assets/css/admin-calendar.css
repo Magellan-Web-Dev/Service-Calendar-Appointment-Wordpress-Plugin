@@ -141,6 +141,15 @@ body::after {
     z-index: 100000;
 }
 
+#csa-custom-appointment-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100001;
+}
+
 .csa-modal-overlay {
     position: absolute;
     top: 0;
@@ -164,6 +173,10 @@ body::after {
     max-height: 100%;
     display:flex;
     flex-direction: column;
+}
+
+.csa-custom-appointment-content {
+    max-width: 560px;
 }
 
 .csa-modal-header {
@@ -207,6 +220,47 @@ body::after {
     padding: 20px;
 }
 
+.csa-custom-appointment-form {
+    display: grid;
+    gap: 12px;
+}
+
+.csa-custom-appointment-meta {
+    display: grid;
+    gap: 4px;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.csa-custom-appointment-label {
+    font-weight: 600;
+}
+
+.csa-custom-appointment-input {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.csa-custom-appointment-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.csa-custom-appointment-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+}
+
 .csa-time-slot {
     display: flex;
     justify-content: space-between;
@@ -216,6 +270,11 @@ body::after {
     border: 1px solid #ddd;
     border-radius: 4px;
     background: #fff;
+}
+
+#csa-day-detail-modal.csa-custom-mode .csa-time-slot.csa-custom-available {
+    background: #fff3e0;
+    border-color: #ffcc80;
 }
 
 .csa-time-slot-meta {
@@ -514,6 +573,9 @@ h2 {
 }
 
 html:has([id="csa-day-detail-modal"][style="display: block;"]) {
+    overflow: hidden;
+}
+html:has([id="csa-custom-appointment-modal"][style="display: block;"]) {
     overflow: hidden;
 }
 .csa-reschedule-banner {

@@ -170,6 +170,7 @@ class Calendar {
                 'timezone' => $timezone,
                 'timezone_label' => $this->get_timezone_label($timezone),
                 'services_duration_map' => $service_duration_map,
+                'service_duration_options' => $this->get_service_duration_options(),
             ]);
 
             return;

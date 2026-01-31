@@ -21,8 +21,10 @@ export class AdminDayDetailsRenderer {
         }
 
         const durationMap = normalizeDurationMap(serviceDurationMap || {});
-        const occupiedTimes = buildOccupiedTimes(data.time_slots || [], durationMap);
+        const timeSlotsData = data.time_slots || [];
+        const occupiedTimes = buildOccupiedTimes(timeSlotsData, durationMap);
         applyAppointmentDurations(data.time_slots || [], durationMap);
+        const slotMap = buildSlotMap(timeSlotsData);
         const isReschedule = !!(rescheduleState && rescheduleState.active);
 
         const formattedDate = new Date(`${data.date}T00:00:00`).toLocaleDateString('en-US', {
@@ -52,19 +54,20 @@ export class AdminDayDetailsRenderer {
             controls.style.marginBottom = '10px';
             controls.dataset.date = data.date;
             controls.innerHTML = '<button id="csa-block-all" class="csa-btn">Block All</button> ' +
-                '<button id="csa-unblock-all" class="csa-btn">Unblock All</button>';
+                '<button id="csa-unblock-all" class="csa-btn">Unblock All</button> ' +
+                '<button id="csa-schedule-custom-appointment" class="csa-btn csa-btn-view">Schedule Custom Appointment</button>';
             if (!isReschedule) {
                 timeSlots.insertAdjacentElement('beforebegin', controls);
             }
             const slotsHtml = (data.time_slots || [])
-                .map((slot) => renderSlot(slot, data.date, occupiedTimes, timezoneName, isReschedule))
+                .map((slot) => renderSlot(slot, data.date, occupiedTimes, timezoneName, isReschedule, rescheduleState, slotMap))
                 .join('');
             timeSlots.innerHTML = slotsHtml;
         }
     }
 }
 
-const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
+const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule, rescheduleState, slotMap) => {
     if (slot.is_occupied) {
         return '';
     }
@@ -92,6 +95,8 @@ const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
             endLabel = safeFormatTime(addMinutesToTime(startRaw, Math.round(first.duration_seconds / 60)));
         }
         rangeLabel = startLabel && endLabel ? `${startLabel} - ${endLabel}` : (startLabel || timeFormatted);
+        const statusClass = first.status || 'booked';
+        const statusLabel = getBookingStatusLabel(first);
         statusHtml = '<div class="csa-time-slot-info">' +
             `<div class="csa-time-slot-customer">${first.name || ''}</div>` +
             '<div class="csa-time-slot-contact">' +
@@ -101,11 +106,11 @@ const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
             `<div class="csa-time-slot-meta">` +
             `${serviceLabel ? `<div class="csa-time-slot-service"><strong>Service:</strong> ${serviceLabel}</div>` : ''}` +
             '</div>' +
-            `<span class="csa-time-slot-status ${first.status || 'booked'}">${first.status || 'booked'}</span>`;
+            `<span class="csa-time-slot-status ${statusClass}">${statusLabel}</span>`;
         actionsHtml = isReschedule ? '' : `<button class="csa-btn csa-btn-view" data-time="${slot.time}">View</button>`;
     } else if (slot.is_blocked_explicit) {
         slotClass = 'blocked';
-        statusHtml = '<div class="csa-time-slot-info"><em>Blocked by admin</em></div>';
+        statusHtml = '<div class="csa-time-slot-info"><em>Blocked</em></div>';
         actionsHtml = isReschedule ? '' : `<button class="csa-btn csa-btn-unblock" data-date="${date}" data-time="${slot.time}">Unblock</button>`;
     } else if (!slot.is_default_available) {
         slotClass = 'unavailable';
@@ -114,7 +119,12 @@ const renderSlot = (slot, date, occupiedTimes, timezoneName, isReschedule) => {
     } else {
         statusHtml = '<div class="csa-time-slot-info"><em>Available</em></div>';
         if (isReschedule) {
-            actionsHtml = `<button class="csa-btn csa-btn-reschedule-slot" data-date="${date}" data-time="${slot.time}">Reschedule here</button>`;
+            const durationSeconds = rescheduleState && rescheduleState.durationSeconds ? rescheduleState.durationSeconds : 0;
+            if (durationSeconds && isRescheduleSlotAvailable(slot.time, durationSeconds, slotMap, occupiedTimes)) {
+                actionsHtml = `<button class="csa-btn csa-btn-reschedule-slot" data-date="${date}" data-time="${slot.time}">Reschedule here</button>`;
+            } else {
+                actionsHtml = '';
+            }
         } else {
             actionsHtml = `<button class="csa-btn csa-btn-block" data-date="${date}" data-time="${slot.time}">Block</button>`;
         }
@@ -147,14 +157,14 @@ const renderAppointment = (appt, date) => {
 
     let allDataHtml = '';
     if (appt.all_data && Object.keys(appt.all_data).length > 0) {
-        const keys = Object.keys(appt.all_data);
+        const keys = Object.keys(appt.all_data).filter((key) => !isCustomAppointmentField(key));
         const serviceKeys = keys.filter((key) => isServiceField(key));
         const otherKeys = keys.filter((key) => !isServiceField(key) && !isTimeField(key));
         const ordered = [...serviceKeys, ...otherKeys];
         const fields = ordered
             .map((key) => `<div class="csa-appointment-field"><strong>${formatFieldLabel(key)}:</strong> ${appt.all_data[key] || ''}</div>`)
             .join('');
-        allDataHtml = `<div class="csa-appointment-all-data">${fields}</div>`;
+        allDataHtml = fields ? `<div class="csa-appointment-all-data">${fields}</div>` : '';
     } else if (appt.id) {
         allDataHtml = `<div class="csa-appointment-all-data csa-loading" data-submission-id="${appt.id}">Loading submission fields...</div>`;
     }
@@ -167,11 +177,17 @@ const renderAppointment = (appt, date) => {
         deleteData = ` data-submission-id="${appt.id}"`;
     }
 
+    let notesHtml = '';
+    if (appt.all_data && typeof appt.all_data === 'object' && appt.all_data.csa_custom_notes) {
+        notesHtml = `<div class="csa-appointment-notes"><strong>Notes:</strong> ${appt.all_data.csa_custom_notes}</div>`;
+    }
+
     return '<div class="csa-appointment-item">' +
         '<div class="csa-appointment-left">' +
         `<div class="csa-appointment-name">${appt.name || ''}</div>` +
         `<div class="csa-appointment-contact">${appt.email || ''}${appt.phone ? ` | ${appt.phone}` : ''}</div>` +
         `<div class="csa-appointment-meta">${metaHtml}</div>` +
+        notesHtml +
         allDataHtml +
         '</div>' +
         `<div class="csa-appointment-actions">` +
@@ -229,6 +245,14 @@ const isTimeField = (key) => {
         return true;
     }
     return false;
+};
+
+const isCustomAppointmentField = (key) => {
+    if (!key) {
+        return false;
+    }
+    const normalized = normalizeKey(key);
+    return normalized.startsWith('csacustom');
 };
 
 const formatTimestamp = (value, timezoneName) => {
@@ -429,4 +453,56 @@ const normalizeDurationMap = (map) => {
         }
     });
     return normalized;
+};
+
+const buildSlotMap = (timeSlots) => {
+    const map = {};
+    (timeSlots || []).forEach((slot) => {
+        if (slot && slot.time) {
+            map[slot.time] = slot;
+        }
+    });
+    return map;
+};
+
+const isRescheduleSlotAvailable = (startTime, durationSeconds, slotMap, occupiedTimes) => {
+    if (!startTime || !durationSeconds || !slotMap) {
+        return false;
+    }
+    const slotsNeeded = Math.ceil(durationSeconds / 1800);
+    for (let i = 0; i < slotsNeeded; i += 1) {
+        const slotTime = i === 0 ? startTime : addMinutesToTime(startTime, 30 * i);
+        if (!slotTime) {
+            return false;
+        }
+        const slot = slotMap[slotTime];
+        if (!slot) {
+            return false;
+        }
+        if (slot.is_occupied || slot.appointments || slot.is_blocked_explicit || !slot.is_default_available) {
+            return false;
+        }
+        if (occupiedTimes && occupiedTimes.has(slotTime)) {
+            return false;
+        }
+    }
+    return true;
+};
+
+const isCustomAppointment = (appointment) => {
+    if (!appointment || !appointment.all_data || typeof appointment.all_data !== 'object') {
+        return false;
+    }
+    return Boolean(appointment.all_data.csa_custom_appointment);
+};
+
+const getBookingStatusLabel = (appointment) => {
+    if (isCustomAppointment(appointment)) {
+        return 'CUSTOM APPOINTMENT BOOKING';
+    }
+    const status = appointment && appointment.status ? String(appointment.status) : 'booked';
+    if (status.toLowerCase() === 'booked') {
+        return 'FORM SUBMISSION BOOKING';
+    }
+    return status;
 };

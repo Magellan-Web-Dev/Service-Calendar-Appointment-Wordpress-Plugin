@@ -102,6 +102,53 @@ class CalendarPage {
                     </div>
                 </div>
             </div>
+
+            <div id="csa-custom-appointment-modal" style="display:none;">
+                <div class="csa-modal-overlay"></div>
+                <div class="csa-modal-content csa-custom-appointment-content">
+                    <div class="csa-modal-header">
+                        <div class="csa-modal-title">
+                            <h3><?php esc_html_e('Schedule Custom Appointment', $text_domain); ?></h3>
+                        </div>
+                        <button class="csa-modal-close" type="button">&times;</button>
+                    </div>
+                    <div class="csa-modal-body">
+                        <form class="csa-custom-appointment-form">
+                            <div class="csa-custom-appointment-meta">
+                                <div><strong><?php esc_html_e('Date:', $text_domain); ?></strong> <span id="csa-custom-appointment-date"></span></div>
+                                <div><strong><?php esc_html_e('Start Time:', $text_domain); ?></strong> <span id="csa-custom-appointment-time"></span></div>
+                                <div><strong><?php esc_html_e('Ends:', $text_domain); ?></strong> <span id="csa-custom-appointment-end"></span></div>
+                            </div>
+
+                            <label class="csa-custom-appointment-label" for="csa-custom-appointment-title">
+                                <?php esc_html_e('Appointment Title', $text_domain); ?>
+                            </label>
+                            <input id="csa-custom-appointment-title" type="text" class="csa-custom-appointment-input" placeholder="<?php esc_attr_e('Custom appointment title', $text_domain); ?>" />
+
+                            <label class="csa-custom-appointment-label" for="csa-custom-appointment-duration">
+                                <?php esc_html_e('Duration', $text_domain); ?>
+                            </label>
+                            <select id="csa-custom-appointment-duration" class="csa-custom-appointment-input"></select>
+
+                            <label class="csa-custom-appointment-label" for="csa-custom-appointment-notes">
+                                <?php esc_html_e('Notes', $text_domain); ?>
+                            </label>
+                            <textarea id="csa-custom-appointment-notes" class="csa-custom-appointment-input" rows="4" placeholder="<?php esc_attr_e('Add internal notes for this appointment', $text_domain); ?>"></textarea>
+
+                            <div id="csa-custom-appointment-warning" class="csa-custom-appointment-warning" style="display:none;"></div>
+
+                            <div class="csa-custom-appointment-actions">
+                                <button type="button" class="csa-btn csa-btn-view" id="csa-custom-appointment-submit">
+                                    <?php esc_html_e('Schedule Appointment', $text_domain); ?>
+                                </button>
+                                <button type="button" class="csa-btn" id="csa-custom-appointment-cancel">
+                                    <?php esc_html_e('Cancel', $text_domain); ?>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
         <?php
     }
