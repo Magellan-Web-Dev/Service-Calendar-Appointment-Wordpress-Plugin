@@ -19,11 +19,14 @@ class GitHubUpdater {
     private const CACHE_TTL = 43200;
     private const PLUGIN_SLUG = 'calendar-service-appointments';
     private const PLUGIN_FILE = 'calendar-service-appointments-form.php';
+    private const DESIRED_FOLDER = 'calendar-service-appointments-form';
+    private const LEGACY_PREFIX = 'Service-Calendar-Appointment-Wordpress-Plugin-';
 
     public static function init() {
         add_filter('pre_set_site_transient_update_plugins', [self::class, 'check_for_update']);
         add_filter('plugins_api', [self::class, 'plugins_api'], 10, 3);
         add_filter('upgrader_source_selection', [self::class, 'fix_source_directory'], 10, 4);
+        add_filter('upgrader_post_install', [self::class, 'maybe_rename_after_update'], 10, 3);
     }
 
     public static function check_for_update($transient) {
@@ -148,6 +151,9 @@ class GitHubUpdater {
         if ($installed_folder === '.' || $installed_folder === '') {
             return $source;
         }
+        if (strpos($installed_folder, self::LEGACY_PREFIX) === 0) {
+            $installed_folder = self::DESIRED_FOLDER;
+        }
 
         $source = trailingslashit($source);
         $desired = trailingslashit(trailingslashit(dirname($source)) . $installed_folder);
@@ -177,6 +183,87 @@ class GitHubUpdater {
 
         $moved = $wp_filesystem->move($source, $desired, true);
         return $moved ? $desired : $source;
+    }
+
+    /**
+     * Rename legacy versioned folders to the desired plugin folder after update.
+     *
+     * @param mixed $response
+     * @param array $hook_extra
+     * @param array $result
+     * @return mixed
+     */
+    public static function maybe_rename_after_update($response, $hook_extra, $result) {
+        if (empty($hook_extra['type']) || $hook_extra['type'] !== 'plugin') {
+            return $response;
+        }
+        if (empty($hook_extra['action']) || $hook_extra['action'] !== 'update') {
+            return $response;
+        }
+        if (empty($hook_extra['plugin'])) {
+            return $response;
+        }
+
+        $plugin_basename = plugin_basename(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE);
+        if ($hook_extra['plugin'] !== $plugin_basename) {
+            return $response;
+        }
+
+        $current_dir = trailingslashit(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR);
+        $current_basename = basename($current_dir);
+        if ($current_basename === self::DESIRED_FOLDER) {
+            return $response;
+        }
+        if (strpos($current_basename, self::LEGACY_PREFIX) !== 0) {
+            return $response;
+        }
+
+        global $wp_filesystem;
+        if (!$wp_filesystem) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            WP_Filesystem();
+        }
+        if (!$wp_filesystem) {
+            return $response;
+        }
+
+        $target_dir = trailingslashit(WP_PLUGIN_DIR . '/' . self::DESIRED_FOLDER);
+        if ($wp_filesystem->is_dir($target_dir)) {
+            if (!$wp_filesystem->delete($target_dir, true)) {
+                return $response;
+            }
+        }
+
+        if (!$wp_filesystem->move($current_dir, $target_dir, true)) {
+            return $response;
+        }
+
+        $old_basename = $hook_extra['plugin'];
+        $new_basename = self::DESIRED_FOLDER . '/' . self::PLUGIN_FILE;
+
+        $active_plugins = get_option('active_plugins', []);
+        if (is_array($active_plugins)) {
+            $index = array_search($old_basename, $active_plugins, true);
+            if ($index !== false) {
+                $active_plugins[$index] = $new_basename;
+                update_option('active_plugins', array_values($active_plugins));
+            }
+        }
+
+        if (is_multisite()) {
+            $network_active = get_site_option('active_sitewide_plugins', []);
+            if (is_array($network_active) && isset($network_active[$old_basename])) {
+                $network_active[$new_basename] = $network_active[$old_basename];
+                unset($network_active[$old_basename]);
+                update_site_option('active_sitewide_plugins', $network_active);
+            }
+        }
+
+        if (function_exists('wp_clean_plugins_cache')) {
+            wp_clean_plugins_cache(true);
+        }
+
+        return $response;
     }
 
     /**
