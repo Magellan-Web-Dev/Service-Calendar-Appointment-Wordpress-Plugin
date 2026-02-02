@@ -76,6 +76,9 @@ class Plugin {
         register_deactivation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'deactivate']);
 
         add_action('plugins_loaded', [$this, 'init']);
+        add_action('admin_init', [$this, 'maybe_handle_manual_update_check']);
+        add_action('admin_notices', [$this, 'manual_update_notice']);
+        add_filter('plugin_row_meta', [$this, 'add_check_updates_link'], 10, 2);
         add_filter('script_loader_tag', [$this, 'filter_module_script_tag'], 10, 3);
     }
 
@@ -155,5 +158,75 @@ class Plugin {
         }
 
         return str_replace('<script ', '<script type="module" ', $tag);
+    }
+
+    /**
+     * Add "Check for updates" link to the plugin row meta.
+     *
+     * @param array $links
+     * @param string $file
+     * @return array
+     */
+    public function add_check_updates_link($links, $file) {
+        if (!current_user_can('update_plugins')) {
+            return $links;
+        }
+
+        $plugin_basename = plugin_basename(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . 'calendar-service-appointments-form.php');
+        if ($file !== $plugin_basename) {
+            return $links;
+        }
+
+        $url = wp_nonce_url(admin_url('plugins.php?csa-check-updates=1'), 'csa-check-updates');
+        $links[] = '<a href="' . esc_url($url) . '">' . esc_html__('Check for updates', 'calendar-service-appointments-form') . '</a>';
+
+        return $links;
+    }
+
+    /**
+     * Handle manual update checks triggered from the plugins page.
+     *
+     * @return void
+     */
+    public function maybe_handle_manual_update_check() {
+        if (!is_admin() || !current_user_can('update_plugins')) {
+            return;
+        }
+        if (empty($_GET['csa-check-updates'])) {
+            return;
+        }
+
+        check_admin_referer('csa-check-updates');
+
+        delete_site_transient('csa_github_release');
+        delete_site_transient('update_plugins');
+        wp_update_plugins();
+
+        $redirect = wp_get_referer();
+        if (!$redirect) {
+            $redirect = admin_url('plugins.php');
+        }
+        $redirect = remove_query_arg(['csa-check-updates', '_wpnonce'], $redirect);
+        $redirect = add_query_arg('csa-updates-checked', '1', $redirect);
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    /**
+     * Show a success notice after a manual update check.
+     *
+     * @return void
+     */
+    public function manual_update_notice() {
+        if (!is_admin() || !current_user_can('update_plugins')) {
+            return;
+        }
+        if (empty($_GET['csa-updates-checked'])) {
+            return;
+        }
+
+        echo '<div class="notice notice-success is-dismissible"><p>' .
+            esc_html__('Update check completed.', 'calendar-service-appointments-form') .
+            '</p></div>';
     }
 }

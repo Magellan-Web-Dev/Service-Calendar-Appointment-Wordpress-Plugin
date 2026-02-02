@@ -160,6 +160,11 @@ class GitHubUpdater {
             return $source;
         }
 
+        $plugin_root = self::locate_plugin_root($source, $wp_filesystem);
+        if ($plugin_root) {
+            $source = trailingslashit($plugin_root);
+        }
+
         if ($source === $desired) {
             return $source;
         }
@@ -172,5 +177,38 @@ class GitHubUpdater {
 
         $moved = $wp_filesystem->move($source, $desired, true);
         return $moved ? $desired : $source;
+    }
+
+    /**
+     * Find the actual plugin root inside the extracted zip folder.
+     *
+     * @param string $source
+     * @param object $wp_filesystem
+     * @return string|null
+     */
+    private static function locate_plugin_root($source, $wp_filesystem) {
+        $candidate = trailingslashit($source) . self::PLUGIN_FILE;
+        if ($wp_filesystem->exists($candidate)) {
+            return $source;
+        }
+
+        $entries = $wp_filesystem->dirlist($source, false, false);
+        if (!is_array($entries)) {
+            return null;
+        }
+
+        foreach ($entries as $name => $entry) {
+            if (empty($entry['type']) || $entry['type'] !== 'd') {
+                continue;
+            }
+
+            $child = trailingslashit($source) . $name;
+            $child_candidate = trailingslashit($child) . self::PLUGIN_FILE;
+            if ($wp_filesystem->exists($child_candidate)) {
+                return $child;
+            }
+        }
+
+        return null;
     }
 }
