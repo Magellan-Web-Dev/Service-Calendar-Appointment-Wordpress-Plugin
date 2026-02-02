@@ -94,11 +94,15 @@ class Plugin {
         $db = Core\Database::get_instance();
         $db->maybe_migrate_times_to_utc();
         $db->maybe_backfill_submitted_at_unix();
+        $db->maybe_backfill_user_id(Core\Access::get_default_admin_id());
         Core\Submissions::get_instance();
         Admin\Calendar::get_instance();
+        Admin\Multisite::get_instance();
         Ajax\Handlers::get_instance();
         Integrations\Elementor::get_instance();
         Rest\DayDetails::get_instance();
+        Rest\Form::get_instance();
+        Rest\Sync::get_instance();
         Updates\GitHubUpdater::init();
 
         // schedule cleanup hook responder

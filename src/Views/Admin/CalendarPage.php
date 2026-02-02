@@ -31,14 +31,41 @@ class CalendarPage {
         $timezone_options = isset($context['timezone_options']) && is_array($context['timezone_options'])
             ? $context['timezone_options']
             : [];
+        $users = isset($context['users']) && is_array($context['users']) ? $context['users'] : [];
+        $selected_user_id = isset($context['selected_user_id']) ? intval($context['selected_user_id']) : 0;
+        $is_admin = !empty($context['is_admin']);
 
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__($label, $text_domain); ?></h1>
             <div class="notice notice-info inline"><p style="font-weight: 600"><?php esc_html_e('Note: Appointments older than 3 months are automatically deleted daily by the system.', $text_domain); ?></p></div>
-            <p style="width: min(120ch, 100%);"><?php esc_html_e('To add appointment fields on the frontend, use the shortcode [csa_appointment_field] inside an HTML/Raw HTML field or any content area that supports shortcodes. Use attributes type="services" or type="time" and elementor_prop="field_id" for Elementor Pro form field syncing.', $text_domain); ?></p>
+            <p style="width: min(120ch, 100%);"><?php esc_html_e('To add appointment fields on the frontend, use the shortcode [csa_appointment_field] inside an HTML/Raw HTML field or any content area that supports shortcodes. Use attributes type="services" for services listings or type="time" for calendar and time slots.  An attribute of "user" or "user_select" is required to target a specific user. Use elementor_prop="field_id" for Elementor Pro form field syncing, or field_prop="field_id" to target a specific field by ID.', $text_domain); ?></p>
 
             <div class="csa-calendar-wrapper">
+                <?php if ($is_admin && !empty($users)) : ?>
+                    <form method="get" class="csa-user-filter" style="margin-bottom: 12px;">
+                        <input type="hidden" name="page" value="<?php echo esc_attr($_GET['page'] ?? ''); ?>" />
+                        <input type="hidden" name="month" value="<?php echo esc_attr($month); ?>" />
+                        <input type="hidden" name="year" value="<?php echo esc_attr($year); ?>" />
+                        <label for="csa-user-filter-select" style="font-weight: 600;"><?php esc_html_e('View calendar for:', $text_domain); ?></label>
+                        <select id="csa-user-filter-select" name="user_id">
+                            <?php foreach ($users as $user) :
+                                $uid = intval($user->ID);
+                                $display = trim($user->first_name . ' ' . $user->last_name);
+                                if ($display === '') {
+                                    $display = $user->display_name;
+                                }
+                                $label = $display . ' (' . $user->user_login . ')';
+                                $selected = $selected_user_id === $uid ? 'selected' : '';
+                                ?>
+                                <option value="<?php echo esc_attr($uid); ?>" <?php echo esc_attr($selected); ?>>
+                                    <?php echo esc_html($label); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button class="button" type="submit"><?php esc_html_e('View', $text_domain); ?></button>
+                    </form>
+                <?php endif; ?>
                 <div id="csa-reschedule-banner" class="csa-reschedule-banner" style="display:none;">
                     <span><?php esc_html_e('Select date to reassign appointment', $text_domain); ?></span>
                     <button class="button button-secondary" id="csa-reschedule-cancel"><?php esc_html_e('Cancel Reschedule', $text_domain); ?></button>

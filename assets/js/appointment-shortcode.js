@@ -38,6 +38,19 @@ const setElementorPropValue = (form, prop, value) => {
     }
 };
 
+const setFieldPropValue = (prop, value) => {
+    if (!prop) {
+        return;
+    }
+    const target = document.getElementById(prop);
+    if (!target) {
+        return;
+    }
+    target.value = value;
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
 const formatPropValue = (type, value) => {
     if (!value) {
         return '';
@@ -49,11 +62,115 @@ const clearElementorPropValue = (form, prop) => {
     setElementorPropValue(form, prop, '');
 };
 
+const clearFieldPropValue = (prop) => {
+    setFieldPropValue(prop, '');
+};
+
+const getUsernameFromForm = (container) => {
+    const form = container ? container.closest('form') : null;
+    if (!form) {
+        return '';
+    }
+    const input = qs('input[name="csa_user"]', form);
+    if (!input) {
+        return '';
+    }
+    return (input.value || '').trim();
+};
+
+class UserShortcode {
+    constructor(container) {
+        this.container = container;
+        this.form = container.closest('form');
+        this.prop = container.dataset.elementorProp || '';
+        this.fieldProp = container.dataset.fieldProp || '';
+        this.username = container.dataset.user || getUsernameFromForm(container);
+    }
+
+    init() {
+        if (!this.username) {
+            return;
+        }
+        if (this.prop) {
+            setElementorPropValue(this.form, this.prop, formatPropValue('user', this.username));
+        }
+        if (this.fieldProp) {
+            setFieldPropValue(this.fieldProp, formatPropValue('user', this.username));
+        }
+    }
+}
+
+class UserSelectShortcode {
+    constructor(container) {
+        this.container = container;
+        this.form = container.closest('form');
+        this.prop = container.dataset.elementorProp || '';
+        this.fieldProp = container.dataset.fieldProp || '';
+        this.list = qsa('.csa-user-item', container);
+        this.select = qs('.csa-user-select', container);
+        this.hidden = qs('.csa-user-hidden', container);
+        this.hiddenForm = qs('.csa-user-hidden-form', container);
+    }
+
+    init() {
+        if (!this.list.length && !this.select) {
+            return;
+        }
+
+        this.list.forEach((item) => {
+            on(item, 'click', () => this.selectUser(item.dataset.username || ''));
+        });
+
+        if (this.select) {
+            on(this.select, 'change', () => this.selectUser(this.select.value || ''));
+        }
+    }
+
+    selectUser(username) {
+        if (!username) {
+            return;
+        }
+        this.list.forEach((entry) => entry.classList.remove('selected'));
+        const match = this.list.find((entry) => entry.dataset.username === username);
+        if (match) {
+            match.classList.add('selected');
+            const radio = qs('.csa-user-radio', match);
+            if (radio) {
+                radio.checked = true;
+            }
+        }
+        if (this.select && this.select.value !== username) {
+            this.select.value = username;
+        }
+        if (this.hidden) {
+            this.hidden.value = username;
+        }
+        if (this.hiddenForm) {
+            this.hiddenForm.value = username;
+        }
+        if (this.prop) {
+            setElementorPropValue(this.form, this.prop, formatPropValue('user', username));
+        }
+        if (this.fieldProp) {
+            setFieldPropValue(this.fieldProp, formatPropValue('user', username));
+        }
+        if (this.form) {
+            const event = new CustomEvent('csa:userChanged', {
+                detail: { username },
+                bubbles: true,
+            });
+            this.form.dispatchEvent(event);
+        }
+    }
+}
+
 class ServiceShortcode {
     constructor(container) {
         this.container = container;
         this.form = container.closest('form');
         this.prop = container.dataset.elementorProp || '';
+        this.fieldProp = container.dataset.fieldProp || '';
+        this.username = getUsernameFromForm(container);
         this.items = qsa('.csa-service-item', container);
     }
 
@@ -72,6 +189,12 @@ class ServiceShortcode {
         });
         if (preselected) {
             this.selectService(preselected);
+        }
+
+        if (this.form) {
+            on(this.form, 'csa:userChanged', () => {
+                this.resetSelection();
+            });
         }
     }
 
@@ -100,6 +223,31 @@ class ServiceShortcode {
         if (this.prop) {
             setElementorPropValue(this.form, this.prop, formatPropValue('service', title));
         }
+        if (this.fieldProp) {
+            setFieldPropValue(this.fieldProp, formatPropValue('service', title));
+        }
+    }
+
+    resetSelection() {
+        this.items.forEach((entry) => {
+            entry.classList.remove('selected');
+            const radio = qs('.csa-service-radio', entry);
+            if (radio) {
+                radio.checked = false;
+            }
+        });
+
+        if (this.form) {
+            this.form.dataset.csaServiceDuration = '0';
+            this.form.dataset.csaServiceTitle = '';
+        }
+
+        if (this.prop) {
+            clearElementorPropValue(this.form, this.prop);
+        }
+        if (this.fieldProp) {
+            clearFieldPropValue(this.fieldProp);
+        }
     }
 }
 
@@ -109,6 +257,8 @@ class TimeShortcode {
         this.config = config;
         this.form = container.closest('form');
         this.prop = container.dataset.elementorProp || '';
+        this.fieldProp = container.dataset.fieldProp || '';
+        this.username = container.dataset.user || getUsernameFromForm(container);
         this.calendar = qs('.csa-calendar-widget', container);
         this.calendarWrapper = qs('.csa-appointment-calendar', container);
         this.timeNotification = qs('.csa-time-notification', container);
@@ -143,6 +293,11 @@ class TimeShortcode {
 
         if (this.form) {
             on(this.form, 'csa:serviceChanged', () => {
+                this.resetSelection();
+                this.loadAvailableDays();
+            });
+            on(this.form, 'csa:userChanged', () => {
+                this.username = getUsernameFromForm(this.container);
                 this.resetSelection();
                 this.loadAvailableDays();
             });
@@ -196,6 +351,9 @@ class TimeShortcode {
         }
         if (this.prop) {
             clearElementorPropValue(this.form, this.prop);
+        }
+        if (this.fieldProp) {
+            clearFieldPropValue(this.fieldProp);
         }
         if (this.timeList) {
             qsa('.csa-time-option', this.timeList).forEach((option) => option.classList.remove('selected'));
@@ -327,6 +485,9 @@ class TimeShortcode {
         if (this.prop) {
             clearElementorPropValue(this.form, this.prop);
         }
+        if (this.fieldProp) {
+            clearFieldPropValue(this.fieldProp);
+        }
         this.updateTimeSelectState('Select a day first', true);
         this.loadAvailableDays();
     }
@@ -348,6 +509,7 @@ class TimeShortcode {
                 action: 'csa_get_available_days',
                 month: monthVal,
                 duration_seconds: durationSeconds,
+                user: this.username,
             });
 
             if (response && response.success && response.data && Array.isArray(response.data.days)) {
@@ -362,6 +524,7 @@ class TimeShortcode {
                             action: 'csa_get_available_days',
                             month: monthVal,
                             duration_seconds: durationSeconds,
+                            user: this.username,
                         });
                         if (retry && retry.success && retry.data && Array.isArray(retry.data.days)) {
                             this.availableDays = new Set(retry.data.days.map((day) => day.value));
@@ -432,6 +595,9 @@ class TimeShortcode {
         if (this.prop) {
             clearElementorPropValue(this.form, this.prop);
         }
+        if (this.fieldProp) {
+            clearFieldPropValue(this.fieldProp);
+        }
 
         this.renderCalendar();
         this.updateTimeNotificationState();
@@ -451,6 +617,7 @@ class TimeShortcode {
                 action: 'csa_get_available_times',
                 date: dateString,
                 duration_seconds: durationSeconds,
+                user: this.username,
             });
 
             if (response && response.success && response.data && Array.isArray(response.data.times)) {
@@ -517,6 +684,9 @@ class TimeShortcode {
         if (this.prop) {
             setElementorPropValue(this.form, this.prop, formatPropValue('time', composite));
         }
+        if (this.fieldProp) {
+            setFieldPropValue(this.fieldProp, formatPropValue('time', composite));
+        }
     }
 
     formatDateString(year, monthIndex, day) {
@@ -567,6 +737,12 @@ if (appointmentConfig) {
         const type = container.dataset.type || 'time';
         if (type === 'services') {
             const instance = new ServiceShortcode(container);
+            instance.init();
+        } else if (type === 'user_select') {
+            const instance = new UserSelectShortcode(container);
+            instance.init();
+        } else if (type === 'user') {
+            const instance = new UserShortcode(container);
             instance.init();
         } else if (type === 'time') {
             const instance = new TimeShortcode(container, appointmentConfig);

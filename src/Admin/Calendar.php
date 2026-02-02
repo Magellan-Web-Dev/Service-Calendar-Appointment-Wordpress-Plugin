@@ -9,9 +9,12 @@ namespace CalendarServiceAppointmentsForm\Admin;
 
 use CalendarServiceAppointmentsForm\Core\Database;
 use CalendarServiceAppointmentsForm\Core\Holidays;
+use CalendarServiceAppointmentsForm\Core\Access;
+use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Core\Submissions;
 use CalendarServiceAppointmentsForm\Views\Admin\CalendarPage;
 use CalendarServiceAppointmentsForm\Views\Admin\ServicesPage;
+use CalendarServiceAppointmentsForm\Views\Admin\UsersPage;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -42,6 +45,7 @@ class Calendar {
      * @var string
      */
     public const SERVICES_MENU_SLUG = 'csa-services';
+    public const USERS_MENU_SLUG = 'csa-users';
 
     /**
      * Admin script/style handle
@@ -88,6 +92,7 @@ class Calendar {
         add_action('admin_menu', [$this, 'add_calendar_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
         add_action('admin_post_csa_save_services', [$this, 'handle_save_services']);
+        add_action('admin_post_csa_save_users', [$this, 'handle_save_users']);
     }
 
     /**
@@ -96,21 +101,31 @@ class Calendar {
      * @return void
      */
     public function add_calendar_page() {
+        $is_child = Multisite::is_child();
+        $menu_callback = [$this, 'render_calendar_page'];
+        if ($is_child && current_user_can('manage_options')) {
+            $menu_callback = [\CalendarServiceAppointmentsForm\Admin\Multisite::get_instance(), 'render_multisite_page'];
+        }
+
         add_menu_page(
             __(self::LABEL_APPOINTMENT_CALENDAR, self::TEXT_DOMAIN),
             __('Service Appointments', self::TEXT_DOMAIN),
-            'manage_options',
+            'read',
             self::MENU_SLUG,
-            [$this, 'render_calendar_page'],
+            $menu_callback,
             'dashicons-calendar-alt',
             25
         );
+
+        if ($is_child) {
+            return;
+        }
 
         add_submenu_page(
             self::MENU_SLUG,
             __('Calendar', self::TEXT_DOMAIN),
             __('Calendar', self::TEXT_DOMAIN),
-            'manage_options',
+            'read',
             self::MENU_SLUG,
             [$this, 'render_calendar_page']
         );
@@ -123,6 +138,15 @@ class Calendar {
             self::SERVICES_MENU_SLUG,
             [$this, 'render_services_page']
         );
+
+        add_submenu_page(
+            self::MENU_SLUG,
+            __('Users', self::TEXT_DOMAIN),
+            __('Users', self::TEXT_DOMAIN),
+            'manage_options',
+            self::USERS_MENU_SLUG,
+            [$this, 'render_users_page']
+        );
     }
 
     /**
@@ -132,6 +156,9 @@ class Calendar {
      * @return void
      */
     public function enqueue_admin_scripts($hook) {
+        if (Multisite::is_child()) {
+            return;
+        }
         $calendar_hooks = [
             'toplevel_page_' . self::MENU_SLUG,
             self::MENU_SLUG . '_page_' . self::MENU_SLUG,
@@ -160,6 +187,16 @@ class Calendar {
                 }
             }
 
+            $current_user = wp_get_current_user();
+            $current_user_id = $current_user ? intval($current_user->ID) : 0;
+            $selected_user_id = $current_user_id;
+            if (current_user_can('manage_options') && isset($_GET['user_id'])) {
+                $candidate = intval($_GET['user_id']);
+                if ($candidate > 0 && get_user_by('id', $candidate)) {
+                    $selected_user_id = $candidate;
+                }
+            }
+
             wp_localize_script(self::SCRIPT_HANDLE, 'csaAdmin', [
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('csa_admin_nonce'),
@@ -171,6 +208,8 @@ class Calendar {
                 'timezone_label' => $this->get_timezone_label($timezone),
                 'services_duration_map' => $service_duration_map,
                 'service_duration_options' => $this->get_service_duration_options(),
+                'selected_user_id' => $selected_user_id,
+                'is_admin' => current_user_can('manage_options'),
             ]);
 
             return;
@@ -192,8 +231,22 @@ class Calendar {
      * @return void
      */
     public function render_calendar_page() {
+        $current_user = wp_get_current_user();
+        $is_admin = current_user_can('manage_options');
+        $current_user_id = $current_user ? intval($current_user->ID) : 0;
+        if (!$is_admin && !Access::is_user_enabled($current_user_id)) {
+            wp_die(esc_html__('You do not have access to view this calendar.', self::TEXT_DOMAIN));
+        }
+
         $current_month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
         $current_year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+        $selected_user_id = $current_user_id;
+        if ($is_admin && isset($_GET['user_id'])) {
+            $candidate = intval($_GET['user_id']);
+            if ($candidate > 0 && get_user_by('id', $candidate)) {
+                $selected_user_id = $candidate;
+            }
+        }
 
         // Prevent navigating to months older than 3 months ago
         $tz = new \DateTimeZone($this->get_timezone_string());
@@ -205,10 +258,11 @@ class Calendar {
             $current_year = (int) $min->format('Y');
         }
 
-        $calendar_cells = $this->build_calendar_cells($current_month, $current_year);
+        $calendar_cells = $this->build_calendar_cells($current_month, $current_year, $selected_user_id);
         $month_label = date('F Y', mktime(0, 0, 0, $current_month, 1, $current_year));
 
         $timezone = $this->get_timezone_string();
+        $users = $is_admin ? get_users(['orderby' => 'display_name', 'order' => 'ASC']) : [];
 
         CalendarPage::render([
             'text_domain' => self::TEXT_DOMAIN,
@@ -220,6 +274,9 @@ class Calendar {
             'timezone' => $timezone,
             'timezone_label' => $this->get_timezone_label($timezone),
             'timezone_options' => $this->get_timezone_options(),
+            'users' => $users,
+            'selected_user_id' => $selected_user_id,
+            'is_admin' => $is_admin,
         ]);
     }
 
@@ -238,6 +295,28 @@ class Calendar {
             'label' => self::LABEL_SERVICES,
             'services' => $services,
             'duration_options' => $this->get_service_duration_options(),
+            'saved' => ($saved === 1),
+        ]);
+    }
+
+    /**
+     * Render users page
+     *
+     * @return void
+     */
+    public function render_users_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        $users = get_users(['orderby' => 'display_name', 'order' => 'ASC']);
+        $enabled = Access::get_enabled_user_ids();
+        $saved = isset($_GET['csa_users_saved']) ? (int) $_GET['csa_users_saved'] : 0;
+
+        UsersPage::render([
+            'text_domain' => self::TEXT_DOMAIN,
+            'users' => $users,
+            'enabled' => $enabled,
             'saved' => ($saved === 1),
         ]);
     }
@@ -310,13 +389,42 @@ class Calendar {
     }
 
     /**
+     * Handle users form submission.
+     *
+     * @return void
+     */
+    public function handle_save_users() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        check_admin_referer('csa_save_users', 'csa_users_nonce');
+
+        $enabled = isset($_POST['csa_enabled_users']) && is_array($_POST['csa_enabled_users'])
+            ? array_map('intval', $_POST['csa_enabled_users'])
+            : [];
+        Access::save_enabled_user_ids($enabled);
+
+        $redirect = add_query_arg(
+            [
+                'page' => self::USERS_MENU_SLUG,
+                'csa_users_saved' => 1,
+            ],
+            admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    /**
      * Build calendar grid view data.
      *
      * @param int $month Month number.
      * @param int $year Year number.
      * @return array
      */
-    private function build_calendar_cells($month, $year) {
+    private function build_calendar_cells($month, $year, $user_id = null) {
         $first_day = mktime(0, 0, 0, $month, 1, $year);
         $days_in_month = date('t', $first_day);
         $day_of_week = date('w', $first_day);
@@ -326,7 +434,7 @@ class Calendar {
         $blocked_slots = $db->get_blocked_slots_for_month($year, $month);
         $holiday_availability = $db->get_holiday_availability();
 
-        $appointments = $this->get_appointments_for_month($year, $month);
+        $appointments = $this->get_appointments_for_month($year, $month, $user_id);
         $today = $this->get_today_date();
 
         $blocked_by_date = [];
@@ -462,9 +570,9 @@ class Calendar {
      * @param int $month Month.
      * @return array Array of appointments.
      */
-    private function get_appointments_for_month($year, $month) {
+    private function get_appointments_for_month($year, $month, $user_id = null) {
         $submissions = Submissions::get_instance();
-        return $submissions->get_appointments_for_month($year, $month);
+        return $submissions->get_appointments_for_month($year, $month, $user_id);
     }
 
     /**

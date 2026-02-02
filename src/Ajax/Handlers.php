@@ -8,7 +8,9 @@
 namespace CalendarServiceAppointmentsForm\Ajax;
 
 use CalendarServiceAppointmentsForm\Core\Database;
+use CalendarServiceAppointmentsForm\Core\Access;
 use CalendarServiceAppointmentsForm\Core\Holidays;
+use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Core\Submissions;
 
 if (!defined('ABSPATH')) {
@@ -112,8 +114,9 @@ class Handlers {
             }
 
             $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
+            $user_id = $this->resolve_request_user_id(true);
 
-            $payload = $this->build_day_details_payload($date);
+            $payload = $this->build_day_details_payload($date, $user_id);
             if (is_wp_error($payload)) {
                 restore_error_handler();
                 wp_send_json_error(['message' => $payload->get_error_message()]);
@@ -138,7 +141,7 @@ class Handlers {
      * @param string $date
      * @return array|\WP_Error
      */
-    public function build_day_details_payload($date) {
+    public function build_day_details_payload($date, $user_id = null) {
         $date = is_string($date) ? trim($date) : '';
         if ($date === '') {
             return new \WP_Error('csa_invalid_date', __('Invalid date', self::TEXT_DOMAIN), ['status' => 400]);
@@ -154,7 +157,7 @@ class Handlers {
         }
 
         $submissions = Submissions::get_instance();
-        $appointments = $submissions->get_appointments_for_date($date);
+        $appointments = $submissions->get_appointments_for_date($date, $user_id);
         if (!is_array($appointments)) {
             $appointments = [];
         }
@@ -447,8 +450,9 @@ class Handlers {
         $hours_set = array_fill_keys($hours, true);
         $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date));
 
+        $appointment_user_id = isset($appt['user_id']) ? intval($appt['user_id']) : $this->resolve_request_user_id(true);
         $submissions = Submissions::get_instance();
-        $appointments = $submissions->get_appointments_for_date($date);
+        $appointments = $submissions->get_appointments_for_date($date, $appointment_user_id);
         if (!is_array($appointments)) {
             $appointments = [];
         }
@@ -498,8 +502,9 @@ class Handlers {
         $time = strlen($time) >= 5 ? substr($time, 0, 5) : $time;
 
         $db = Database::get_instance();
+        $user_id = $this->resolve_request_user_id(true);
         $submissions = Submissions::get_instance();
-        $appointments = $submissions->get_appointments_for_date($date);
+        $appointments = $submissions->get_appointments_for_date($date, $user_id);
         if (!is_array($appointments)) {
             $appointments = [];
         }
@@ -521,7 +526,7 @@ class Handlers {
             'csa_custom_notes' => $notes,
         ];
 
-        $insert_id = $db->insert_appointment(null, $date, $time, $submission_data);
+        $insert_id = $db->insert_appointment(null, $date, $time, $submission_data, $user_id);
         if (!$insert_id) {
             wp_send_json_error(['message' => __('Failed to schedule custom appointment', self::TEXT_DOMAIN)]);
         }
@@ -635,22 +640,48 @@ class Handlers {
     public function get_available_times() {
         $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
         $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $user_id = $this->resolve_request_user_id(true);
 
         if (empty($date)) {
             wp_send_json_error(['message' => __('Invalid date', self::TEXT_DOMAIN)]);
         }
+        if (!empty($_POST['user']) && !$user_id) {
+            wp_send_json_error(['message' => __('Invalid user for booking.', self::TEXT_DOMAIN)]);
+        }
 
+        if (Multisite::is_child()) {
+            $username = isset($_POST['user']) ? sanitize_text_field($_POST['user']) : '';
+            $response = Multisite::fetch_master_available_times($date, $duration_seconds, $username);
+            if (is_wp_error($response)) {
+                wp_send_json_error(['message' => $response->get_error_message()]);
+            }
+            $times = isset($response['times']) && is_array($response['times']) ? $response['times'] : [];
+            wp_send_json_success(['times' => $times]);
+        }
+
+        $available_times = $this->build_available_times($date, $duration_seconds, $user_id);
+        wp_send_json_success(['times' => $available_times]);
+    }
+
+    /**
+     * Build available times for a date.
+     *
+     * @param string $date
+     * @param int $duration_seconds
+     * @return array
+     */
+    public function build_available_times($date, $duration_seconds, $user_id = null) {
         $tz = $this->get_timezone_object();
         $now = $tz ? new \DateTime('now', $tz) : new \DateTime();
         $today = $now ? $now->format('Y-m-d') : date('Y-m-d');
         if ($date < $today) {
-            wp_send_json_success(['times' => []]);
+            return [];
         }
 
         $db = Database::get_instance();
         $blocked_slots = $db->get_blocked_slots_for_date($date);
         $submissions = Submissions::get_instance();
-        $appointments = $submissions->get_appointments_for_date($date);
+        $appointments = $submissions->get_appointments_for_date($date, $user_id);
 
         $weekly = $db->get_weekly_availability();
         $holiday_availability = $db->get_holiday_availability();
@@ -689,7 +720,7 @@ class Handlers {
             ];
         }
 
-        wp_send_json_success(['times' => $available_times]);
+        return $available_times;
     }
 
     /**
@@ -700,8 +731,12 @@ class Handlers {
         $db = Database::get_instance();
         $submissions = Submissions::get_instance();
         $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $user_id = $this->resolve_request_user_id(true);
         $slots_needed = $this->get_slots_needed($duration_seconds);
         $service_duration_map = $this->get_service_duration_map();
+        if (!empty($_POST['user']) && !$user_id) {
+            wp_send_json_error(['message' => __('Invalid user for booking.', self::TEXT_DOMAIN)]);
+        }
 
         $tz = $this->get_timezone_object();
         $now = $tz ? new \DateTime('now', $tz) : new \DateTime();
@@ -733,7 +768,7 @@ class Handlers {
                 $hours = $this->get_business_hours();
                 $hours_set = array_fill_keys($hours, true);
                 $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr));
-                $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr), $service_duration_map);
+                $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr, $user_id), $service_duration_map);
                 foreach ($hours as $time) {
                     if ($dateStr === $today && $now) {
                         $slot_dt = \DateTime::createFromFormat('Y-m-d H:i', $dateStr . ' ' . $time, $now->getTimezone());
@@ -770,11 +805,37 @@ class Handlers {
     public function get_available_days() {
         $month = isset($_POST['month']) ? sanitize_text_field($_POST['month']) : '';
         $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $user_id = $this->resolve_request_user_id(true);
         $slots_needed = $this->get_slots_needed($duration_seconds);
         if (empty($month) || !preg_match('/^\d{4}-\d{2}$/', $month)) {
             wp_send_json_error(['message' => __('Invalid month', self::TEXT_DOMAIN)]);
         }
+        if (!empty($_POST['user']) && !$user_id) {
+            wp_send_json_error(['message' => __('Invalid user for booking.', self::TEXT_DOMAIN)]);
+        }
 
+        if (Multisite::is_child()) {
+            $username = isset($_POST['user']) ? sanitize_text_field($_POST['user']) : '';
+            $response = Multisite::fetch_master_available_days($month, $duration_seconds, $username);
+            if (is_wp_error($response)) {
+                wp_send_json_error(['message' => $response->get_error_message()]);
+            }
+            $days = isset($response['days']) && is_array($response['days']) ? $response['days'] : [];
+            wp_send_json_success(['days' => $days]);
+        }
+
+        $days = $this->build_available_days($month, $slots_needed, $user_id);
+        wp_send_json_success(['days' => $days]);
+    }
+
+    /**
+     * Build available days for a month.
+     *
+     * @param string $month
+     * @param int $slots_needed
+     * @return array
+     */
+    public function build_available_days($month, $slots_needed, $user_id = null) {
         list($year, $mon) = array_map('intval', explode('-', $month));
         $db = Database::get_instance();
         $submissions = Submissions::get_instance();
@@ -806,7 +867,7 @@ class Handlers {
             $hours = $this->get_business_hours();
             $hours_set = array_fill_keys($hours, true);
             $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr));
-            $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr), $service_duration_map);
+            $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr, $user_id), $service_duration_map);
             foreach ($hours as $time) {
                 if ($dateStr === $today && $now) {
                     $slot_dt = \DateTime::createFromFormat('Y-m-d H:i', $dateStr . ' ' . $time, $now->getTimezone());
@@ -830,7 +891,65 @@ class Handlers {
             }
         }
 
-        wp_send_json_success(['days' => $days]);
+        return $days;
+    }
+
+    /**
+     * Check if a time range is available for a duration.
+     *
+     * @param string $date
+     * @param string $start_time
+     * @param int $duration_seconds
+     * @return bool
+     */
+    public function check_time_range_available($date, $start_time, $duration_seconds, $user_id = null) {
+        if (empty($date) || empty($start_time)) {
+            return false;
+        }
+        $start_time = strlen($start_time) >= 5 ? substr($start_time, 0, 5) : $start_time;
+
+        $db = Database::get_instance();
+        $weekly = $db->get_weekly_availability();
+        $holiday_availability = $db->get_holiday_availability();
+        $dow = date('w', strtotime($date));
+        $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
+        $overrides = $db->get_overrides_for_date($date);
+        $holiday_key = Holidays::get_us_holiday_key_for_date($date);
+        $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
+        $holiday_closed = $holiday_key && !$holiday_enabled;
+
+        $hours = $this->get_business_hours();
+        $hours_set = array_fill_keys($hours, true);
+        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date));
+        $service_duration_map = $this->get_service_duration_map();
+        $appointments = Submissions::get_instance()->get_appointments_for_date($date, $user_id);
+        if (!is_array($appointments)) {
+            $appointments = [];
+        }
+        $booked_set = $this->build_booked_set($appointments, $service_duration_map);
+        $slots_needed = $this->get_slots_needed($duration_seconds);
+
+        return $this->is_time_range_available($date, $start_time, $slots_needed, $default_hours, $overrides, $holiday_closed, $blocked_set, $booked_set, $hours_set);
+    }
+
+    /**
+     * Build slot times for a duration.
+     *
+     * @param string $start_time
+     * @param int $duration_seconds
+     * @return array
+     */
+    public function build_slot_times_for_duration($start_time, $duration_seconds) {
+        $start_time = strlen($start_time) >= 5 ? substr($start_time, 0, 5) : $start_time;
+        $slots_needed = $this->get_slots_needed($duration_seconds);
+        $slots = [];
+        for ($i = 0; $i < $slots_needed; $i++) {
+            $slot_time = $i === 0 ? $start_time : $this->add_minutes($start_time, 30 * $i);
+            if ($slot_time) {
+                $slots[] = $slot_time;
+            }
+        }
+        return $slots;
     }
 
     /**
@@ -1352,5 +1471,31 @@ class Handlers {
             }
         }
         return true;
+    }
+
+    /**
+     * Resolve user id for requests (admin can override with user_id).
+     *
+     * @param bool $allow_admin_override
+     * @return int|null
+     */
+    private function resolve_request_user_id($allow_admin_override = false) {
+        if (!empty($_POST['user'])) {
+            $user_id = Access::resolve_enabled_user_id(sanitize_text_field($_POST['user']));
+            return $user_id ?: null;
+        }
+        if (!empty($_POST['username'])) {
+            $user_id = Access::resolve_enabled_user_id(sanitize_text_field($_POST['username']));
+            return $user_id ?: null;
+        }
+        if ($allow_admin_override && current_user_can(self::CAPABILITY) && !empty($_POST['user_id'])) {
+            $candidate = intval($_POST['user_id']);
+            return $candidate > 0 ? $candidate : null;
+        }
+        if (is_user_logged_in()) {
+            $current = wp_get_current_user();
+            return $current ? intval($current->ID) : null;
+        }
+        return null;
     }
 }

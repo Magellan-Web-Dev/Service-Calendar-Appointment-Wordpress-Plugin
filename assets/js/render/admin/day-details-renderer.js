@@ -157,9 +157,9 @@ const renderAppointment = (appt, date) => {
 
     let allDataHtml = '';
     if (appt.all_data && Object.keys(appt.all_data).length > 0) {
-        const keys = Object.keys(appt.all_data).filter((key) => !isCustomAppointmentField(key));
+        const keys = Object.keys(appt.all_data).filter((key) => !isCustomAppointmentField(key) && key !== 'csa_service' && key !== 'csa_user' && key !== 'csa_username');
         const serviceKeys = keys.filter((key) => isServiceField(key));
-        const otherKeys = keys.filter((key) => !isServiceField(key) && !isTimeField(key));
+        const otherKeys = keys.filter((key) => !isServiceField(key) && !isTimeField(key) && !isUserField(key));
         const ordered = [...serviceKeys, ...otherKeys];
         const fields = ordered
             .map((key) => `<div class="csa-appointment-field"><strong>${formatFieldLabel(key)}:</strong> ${appt.all_data[key] || ''}</div>`)
@@ -221,10 +221,21 @@ const isServiceField = (key) => {
         return false;
     }
     if (key === 'csa_service') {
-        return true;
+        return false;
     }
     const normalized = normalizeKey(key);
     return normalized.includes('service');
+};
+
+const isUserField = (key) => {
+    if (!key) {
+        return false;
+    }
+    if (key === 'csa_user' || key === 'csa_username') {
+        return true;
+    }
+    const normalized = normalizeKey(key);
+    return normalized === 'user' || normalized.endsWith('user') || normalized.includes('username');
 };
 
 const isTimeField = (key) => {

@@ -521,8 +521,14 @@ p, .csa-appointment-field {
     margin-top: 1.5em;
 }
 
+.csa-holiday-list {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+}
+
 @media(min-width: 680px) {
-    #csa-weekly-availability tbody, .csa-holiday-list {
+    #csa-weekly-availability tbody {
         display: grid;
         gap: 0.25rem;
         margin-top: 0.5rem;

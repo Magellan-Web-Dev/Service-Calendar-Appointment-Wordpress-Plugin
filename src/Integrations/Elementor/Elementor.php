@@ -8,6 +8,7 @@
 namespace CalendarServiceAppointmentsForm\Integrations\Elementor;
 
 use CalendarServiceAppointmentsForm\Core\Database;
+use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Core\Submissions;
 use CalendarServiceAppointmentsForm\Integrations\Elementor\Fields\Appointment;
 use CalendarServiceAppointmentsForm\Integrations\Elementor\Fields\AppointmentDate;
@@ -268,6 +269,30 @@ class Elementor {
             return;
         }
 
+        if (Multisite::is_child()) {
+            $normalized_time = $this->normalize_time_value($appointment_time);
+            if ($normalized_time === '') {
+                $ajax_handler->add_error_message(__('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
+                return;
+            }
+
+            $submission_data = $this->build_submission_data($raw_fields);
+            if ($service_title !== '' && !isset($submission_data['csa_service'])) {
+                $submission_data['csa_service'] = $service_title;
+            }
+            if ($duration_seconds > 0 && !isset($submission_data['csa_custom_duration_seconds'])) {
+                $submission_data['csa_custom_duration_seconds'] = $duration_seconds;
+            }
+
+            $booked = $this->book_on_master_site($appointment_date, $normalized_time, $service_title, $duration_seconds, $submission_data);
+            if (is_wp_error($booked)) {
+                $ajax_handler->add_error_message($booked->get_error_message());
+                return;
+            }
+
+            return;
+        }
+
         $db = Database::get_instance();
 
         // Use a DB-level named lock to reduce race conditions between concurrent submissions.
@@ -347,6 +372,19 @@ class Elementor {
             $appointment_time .= ':00';
         }
 
+        if (Multisite::is_child()) {
+            $normalized_time = $this->normalize_time_value($appointment_time);
+            if ($normalized_time === '') {
+                return;
+            }
+
+            $availability = $this->check_master_time_available($appointment_date, $normalized_time, $duration_seconds);
+            if (is_wp_error($availability)) {
+                $ajax_handler->add_error_message($availability->get_error_message());
+            }
+            return;
+        }
+
         $slots = $this->build_slot_times($appointment_time, $duration_seconds);
         if (empty($slots)) {
             $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
@@ -411,6 +449,10 @@ class Elementor {
             $service_title = $this->get_service_title_from_fields($raw_fields);
             if ($service_title !== '') {
                 $submission_data['csa_service'] = $service_title;
+                $duration_seconds = $this->get_service_duration_seconds($service_title);
+                if ($duration_seconds > 0) {
+                    $submission_data['csa_custom_duration_seconds'] = $duration_seconds;
+                }
             }
             $insert_id = $db->insert_appointment($submission_id, $date, $time, $submission_data);
             if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -469,6 +511,10 @@ class Elementor {
                 $service_title = $this->get_service_title_from_fields($raw_fields);
                 if ($service_title !== '') {
                     $submission_data['csa_service'] = $service_title;
+                    $duration_seconds = $this->get_service_duration_seconds($service_title);
+                    if ($duration_seconds > 0) {
+                        $submission_data['csa_custom_duration_seconds'] = $duration_seconds;
+                    }
                 }
 
                 // Insert appointment row (store submission_data JSON)
@@ -651,8 +697,12 @@ class Elementor {
         if ($service_title === '') {
             return 0;
         }
-        $db = Database::get_instance();
-        $services = $db->get_services();
+        if (Multisite::is_child()) {
+            $services = Multisite::fetch_master_services();
+        } else {
+            $db = Database::get_instance();
+            $services = $db->get_services();
+        }
         foreach ($services as $service) {
             if (!is_array($service)) {
                 continue;
@@ -794,5 +844,80 @@ class Elementor {
             $reserved[] = $time;
         }
         return true;
+    }
+
+    /**
+     * Normalize time value to HH:MM.
+     *
+     * @param string $time
+     * @return string
+     */
+    private function normalize_time_value($time) {
+        if (!is_string($time) || $time === '') {
+            return '';
+        }
+        $time = trim($time);
+        if (strlen($time) >= 5) {
+            return substr($time, 0, 5);
+        }
+        return '';
+    }
+
+    /**
+     * Build a set of available start times from a master response.
+     *
+     * @param array $response
+     * @return array
+     */
+    private function extract_master_times($response) {
+        $times = [];
+        if (!is_array($response) || empty($response['times']) || !is_array($response['times'])) {
+            return $times;
+        }
+        foreach ($response['times'] as $time) {
+            if (is_array($time) && isset($time['value'])) {
+                $value = $this->normalize_time_value((string) $time['value']);
+            } else {
+                $value = $this->normalize_time_value((string) $time);
+            }
+            if ($value !== '') {
+                $times[$value] = true;
+            }
+        }
+        return $times;
+    }
+
+    /**
+     * Check master site availability for a specific start time.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $duration_seconds
+     * @return bool|\WP_Error
+     */
+    private function check_master_time_available($date, $time, $duration_seconds) {
+        $response = Multisite::fetch_master_available_times($date, $duration_seconds);
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        $times = $this->extract_master_times($response);
+        if (empty($times[$time])) {
+            return new \WP_Error('csa_unavailable', __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+        }
+        return true;
+    }
+
+    /**
+     * Book an appointment on the master site.
+     *
+     * @param string $date
+     * @param string $time
+     * @param string $service_title
+     * @param int $duration_seconds
+     * @param array $submission_data
+     * @return array|\WP_Error
+     */
+    private function book_on_master_site($date, $time, $service_title, $duration_seconds, $submission_data) {
+        return Multisite::book_on_master($date, $time, $service_title, $duration_seconds, $submission_data);
     }
 }

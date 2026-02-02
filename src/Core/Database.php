@@ -394,13 +394,15 @@ class Database {
         $sql2 = "CREATE TABLE IF NOT EXISTS $appt_table (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             submission_id bigint(20) DEFAULT NULL,
+            user_id bigint(20) DEFAULT NULL,
             appointment_date date NOT NULL,
             appointment_time time NOT NULL,
             submission_data longtext DEFAULT NULL,
             submitted_at_unix bigint(20) DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
-            UNIQUE KEY submission_date_time (submission_id, appointment_date, appointment_time)
+            UNIQUE KEY submission_date_time (submission_id, appointment_date, appointment_time),
+            KEY user_id (user_id)
         ) $charset_collate;";
 
         dbDelta($sql2);
@@ -411,6 +413,13 @@ class Database {
         if (empty($col)) {
             $alter = "ALTER TABLE {$appt_table} ADD COLUMN submission_data LONGTEXT DEFAULT NULL";
             $wpdb->query($alter);
+        }
+
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$appt_table_esc} LIKE 'user_id'");
+        if (empty($col)) {
+            $alter = "ALTER TABLE {$appt_table} ADD COLUMN user_id BIGINT(20) DEFAULT NULL";
+            $wpdb->query($alter);
+            $wpdb->query("ALTER TABLE {$appt_table} ADD KEY user_id (user_id)");
         }
 
         // Ensure submitted_at_unix column exists (adds column for older installs)
@@ -426,15 +435,18 @@ class Database {
      * @param int|null $submission_id
      * @param string $date Y-m-d
      * @param string $time H:i or H:i:s
+     * @param int|null $user_id
      * @return int|false Insert ID or false
      */
-    public function insert_appointment($submission_id, $date, $time, $submission_data = null) {
+    public function insert_appointment($submission_id, $date, $time, $submission_data = null, $user_id = null) {
         global $wpdb;
 
         $utc = $this->convert_local_to_utc($date, $time);
+        $user_id = $user_id !== null ? intval($user_id) : null;
 
         $data = [
             'submission_id' => $submission_id ? intval($submission_id) : null,
+            'user_id' => $user_id,
             'appointment_date' => $utc['date'],
             'appointment_time' => $utc['time'],
             'submitted_at_unix' => time(),
@@ -449,7 +461,7 @@ class Database {
             $data['submission_data'] = $json;
         }
 
-        $formats = ['%d', '%s', '%s', '%d'];
+        $formats = ['%d', '%d', '%s', '%s', '%d'];
         if (isset($data['submission_data'])) { $formats[] = '%s'; }
         // Ensure appointments table exists (create on-demand if necessary)
         if (!$this->does_table_exist($this->appointments_table)) {
@@ -460,6 +472,11 @@ class Database {
         if (isset($data['submission_data']) && !$this->table_has_column($this->appointments_table, 'submission_data')) {
             $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN submission_data LONGTEXT DEFAULT NULL";
             $wpdb->query($alter_sql);
+        }
+        if (!$this->table_has_column($this->appointments_table, 'user_id')) {
+            $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN user_id BIGINT(20) DEFAULT NULL";
+            $wpdb->query($alter_sql);
+            $wpdb->query("ALTER TABLE {$this->appointments_table} ADD KEY user_id (user_id)");
         }
         if (!$this->table_has_column($this->appointments_table, 'submitted_at_unix')) {
             $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN submitted_at_unix BIGINT(20) DEFAULT NULL";
@@ -472,13 +489,16 @@ class Database {
             if ($submission_id) {
                 $updated = $wpdb->update(
                     $this->appointments_table,
-                    ['submission_data' => isset($data['submission_data']) ? $data['submission_data'] : null],
+                    [
+                        'submission_data' => isset($data['submission_data']) ? $data['submission_data'] : null,
+                        'user_id' => $user_id,
+                    ],
                     [
                         'submission_id' => intval($submission_id),
                         'appointment_date' => $date,
                         'appointment_time' => $time,
                     ],
-                    ['%s'],
+                    ['%s', '%d'],
                     ['%d','%s','%s']
                 );
                 if ($updated !== false) {
@@ -501,7 +521,7 @@ class Database {
      * @param int $month
      * @return array
      */
-    public function get_appointments_for_month_from_table($year, $month) {
+    public function get_appointments_for_month_from_table($year, $month, $user_id = null) {
         global $wpdb;
         $range = $this->get_utc_range_for_local_month($year, $month);
         $start_date = $range['start'];
@@ -512,15 +532,21 @@ class Database {
 
         $has_submission_data = $this->table_has_column($this->appointments_table, 'submission_data');
         $has_submitted_at = $this->table_has_column($this->appointments_table, 'submitted_at_unix');
+        $has_user_id = $this->table_has_column($this->appointments_table, 'user_id');
+        $user_id = $user_id !== null ? intval($user_id) : null;
+        $user_clause = '';
+        $user_params = [];
+        if ($has_user_id && $user_id) {
+            $user_clause = ' AND user_id = %d';
+            $user_params[] = $user_id;
+        }
         // If submission_data column exists, include it; otherwise select without it
         if ($has_submission_data) {
-            $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
-                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
-                ORDER BY appointment_date, appointment_time",
-                $start_date,
-                $end_date
-            ), ARRAY_A);
+            $select = "SELECT id, submission_id, " . ($has_user_id ? "user_id, " : "") . "appointment_date, appointment_time, submission_data, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s{$user_clause}
+                ORDER BY appointment_date, appointment_time";
+            $params = array_merge([$start_date, $end_date], $user_params);
+            $results = $wpdb->get_results($wpdb->prepare($select, ...$params), ARRAY_A);
 
             // decode submission_data JSON into array
             foreach ($results as &$r) {
@@ -538,13 +564,11 @@ class Database {
                 }
             }
         } else {
-            $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
-                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
-                ORDER BY appointment_date, appointment_time",
-                $start_date,
-                $end_date
-            ), ARRAY_A);
+            $select = "SELECT id, submission_id, " . ($has_user_id ? "user_id, " : "") . "appointment_date, appointment_time, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s{$user_clause}
+                ORDER BY appointment_date, appointment_time";
+            $params = array_merge([$start_date, $end_date], $user_params);
+            $results = $wpdb->get_results($wpdb->prepare($select, ...$params), ARRAY_A);
             // ensure submission_data key exists for compatibility
             foreach ($results as &$r) {
                 $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
@@ -565,7 +589,7 @@ class Database {
      * @param string $date
      * @return array
      */
-    public function get_appointments_for_date_from_table($date) {
+    public function get_appointments_for_date_from_table($date, $user_id = null) {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return [];
@@ -575,14 +599,20 @@ class Database {
 
         $has_submission_data = $this->table_has_column($this->appointments_table, 'submission_data');
         $has_submitted_at = $this->table_has_column($this->appointments_table, 'submitted_at_unix');
+        $has_user_id = $this->table_has_column($this->appointments_table, 'user_id');
+        $user_id = $user_id !== null ? intval($user_id) : null;
+        $user_clause = '';
+        $user_params = [];
+        if ($has_user_id && $user_id) {
+            $user_clause = ' AND user_id = %d';
+            $user_params[] = $user_id;
+        }
         if ($has_submission_data) {
-            $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, submission_data, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
-                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
-                ORDER BY appointment_date, appointment_time",
-                $range['start'],
-                $range['end']
-            ), ARRAY_A);
+            $select = "SELECT id, submission_id, " . ($has_user_id ? "user_id, " : "") . "appointment_date, appointment_time, submission_data, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s{$user_clause}
+                ORDER BY appointment_date, appointment_time";
+            $params = array_merge([$range['start'], $range['end']], $user_params);
+            $results = $wpdb->get_results($wpdb->prepare($select, ...$params), ARRAY_A);
 
             foreach ($results as &$r) {
                 $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
@@ -599,13 +629,11 @@ class Database {
                 }
             }
         } else {
-            $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT id, submission_id, appointment_date, appointment_time, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
-                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s
-                ORDER BY appointment_date, appointment_time",
-                $range['start'],
-                $range['end']
-            ), ARRAY_A);
+            $select = "SELECT id, submission_id, " . ($has_user_id ? "user_id, " : "") . "appointment_date, appointment_time, " . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at FROM {$this->appointments_table}
+                WHERE CONCAT(appointment_date, ' ', appointment_time) BETWEEN %s AND %s{$user_clause}
+                ORDER BY appointment_date, appointment_time";
+            $params = array_merge([$range['start'], $range['end']], $user_params);
+            $results = $wpdb->get_results($wpdb->prepare($select, ...$params), ARRAY_A);
             foreach ($results as &$r) {
                 $local = $this->convert_utc_to_local($r['appointment_date'], $r['appointment_time']);
                 $r['appointment_date'] = $local['date'];
@@ -648,8 +676,9 @@ class Database {
         }
         $has_submission_data = $this->table_has_column($this->appointments_table, 'submission_data');
         $has_submitted_at = $this->table_has_column($this->appointments_table, 'submitted_at_unix');
+        $has_user_id = $this->table_has_column($this->appointments_table, 'user_id');
         $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, submission_id, appointment_date, appointment_time, " . ($has_submission_data ? "submission_data, " : "") . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at
+            "SELECT id, submission_id, " . ($has_user_id ? "user_id, " : "") . "appointment_date, appointment_time, " . ($has_submission_data ? "submission_data, " : "") . ($has_submitted_at ? "submitted_at_unix, " : "") . "created_at
             FROM {$this->appointments_table} WHERE id = %d",
             intval($id)
         ), ARRAY_A);
@@ -787,6 +816,37 @@ class Database {
                 ['%d']
             );
         }
+    }
+
+    /**
+     * Backfill user_id for existing appointments.
+     *
+     * @param int $default_user_id
+     * @return void
+     */
+    public function maybe_backfill_user_id($default_user_id) {
+        global $wpdb;
+        $default_user_id = intval($default_user_id);
+        if ($default_user_id <= 0) {
+            return;
+        }
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return;
+        }
+        if (!$this->table_has_column($this->appointments_table, 'user_id')) {
+            $alter_sql = "ALTER TABLE {$this->appointments_table} ADD COLUMN user_id BIGINT(20) DEFAULT NULL";
+            $wpdb->query($alter_sql);
+            $wpdb->query("ALTER TABLE {$this->appointments_table} ADD KEY user_id (user_id)");
+        }
+
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$this->appointments_table}
+                SET user_id = %d
+                WHERE user_id IS NULL OR user_id = 0",
+                $default_user_id
+            )
+        );
     }
 
     /**

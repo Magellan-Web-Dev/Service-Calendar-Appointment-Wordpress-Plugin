@@ -70,13 +70,13 @@ class Submissions {
      * @param string $date
      * @return array
      */
-    public function get_appointments_for_date($date) {
+    public function get_appointments_for_date($date, $user_id = null) {
         global $wpdb;
 
         $db = Database::get_instance();
 
         // Prefer plugin appointments table when present
-        $rows = $db->get_appointments_for_date_from_table($date);
+        $rows = $db->get_appointments_for_date_from_table($date, $user_id);
         if (!empty($rows)) {
             $out = [];
             foreach ($rows as $r) {
@@ -84,6 +84,7 @@ class Submissions {
                 $appt = [
                     'id' => $submission_id,
                     'appt_id' => isset($r['id']) ? intval($r['id']) : null,
+                    'user_id' => isset($r['user_id']) ? intval($r['user_id']) : null,
                     'date' => $r['appointment_date'],
                     'time' => $r['appointment_time'],
                     'status' => isset($r['status']) ? $r['status'] : 'booked',
@@ -104,6 +105,10 @@ class Submissions {
                 $out[] = $appt;
             }
             return $out;
+        }
+
+        if ($user_id) {
+            return [];
         }
 
         // Fallback: query Elementor submission values for this date
@@ -157,7 +162,7 @@ class Submissions {
      * @param int $month
      * @return array
      */
-    public function get_appointments_for_month($year, $month) {
+    public function get_appointments_for_month($year, $month, $user_id = null) {
         global $wpdb;
 
         $start_date = sprintf('%04d-%02d-01', $year, $month);
@@ -166,7 +171,7 @@ class Submissions {
         $db = Database::get_instance();
 
         // Prefer plugin appointments table when rows exist for this month
-        $rows = $db->get_appointments_for_month_from_table($year, $month);
+        $rows = $db->get_appointments_for_month_from_table($year, $month, $user_id);
         if (!empty($rows)) {
             $out = [];
             foreach ($rows as $r) {
@@ -174,6 +179,7 @@ class Submissions {
                 $appt = [
                     'id' => $submission_id,
                     'appt_id' => isset($r['id']) ? intval($r['id']) : null,
+                    'user_id' => isset($r['user_id']) ? intval($r['user_id']) : null,
                     'date' => $r['appointment_date'],
                     'time' => $r['appointment_time'],
                     'status' => isset($r['status']) ? $r['status'] : 'booked',
@@ -192,6 +198,10 @@ class Submissions {
                 $out[] = $appt;
             }
             return $out;
+        }
+
+        if ($user_id) {
+            return [];
         }
 
         // Otherwise derive from Elementor submission values in the month range
@@ -246,14 +256,14 @@ class Submissions {
      * @param string $time H:i or H:i:s
      * @return bool
      */
-    public function is_slot_booked($date, $time) {
+    public function is_slot_booked($date, $time, $user_id = null) {
         global $wpdb;
 
         // normalize time to H:i:s
         if (strlen($time) === 5) { $cmp_time = $time . ':00'; } else { $cmp_time = $time; }
 
         $db = Database::get_instance();
-        $rows = $db->get_appointments_for_date_from_table($date);
+        $rows = $db->get_appointments_for_date_from_table($date, $user_id);
         if (!empty($rows)) {
             foreach ($rows as $r) {
                 $t = $r['appointment_time'];
@@ -262,6 +272,10 @@ class Submissions {
                     return true;
                 }
             }
+            return false;
+        }
+
+        if ($user_id) {
             return false;
         }
 

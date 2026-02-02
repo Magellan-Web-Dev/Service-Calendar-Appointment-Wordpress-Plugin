@@ -641,6 +641,9 @@ export class AdminCalendar {
         const url = new URL(window.location.href);
         url.searchParams.set('month', month);
         url.searchParams.set('year', year);
+        if (this.config && this.config.is_admin && this.config.selected_user_id) {
+            url.searchParams.set('user_id', this.config.selected_user_id);
+        }
         window.location.href = url.toString();
     }
 
@@ -1206,6 +1209,9 @@ export class AdminCalendar {
      */
     async request(payload) {
         document.dispatchEvent(new Event('csa:ajaxStart'));
+        if (this.config && this.config.selected_user_id && !('user_id' in payload)) {
+            payload.user_id = this.config.selected_user_id;
+        }
         try {
             return await postAjax(this.config.ajax_url, payload);
         } finally {

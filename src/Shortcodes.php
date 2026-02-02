@@ -8,6 +8,8 @@
 namespace CalendarServiceAppointmentsForm;
 
 use CalendarServiceAppointmentsForm\Core\Database;
+use CalendarServiceAppointmentsForm\Core\Access;
+use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Views\Shortcodes\AppointmentField;
 
 if (!defined('ABSPATH')) {
@@ -79,24 +81,41 @@ class Shortcodes {
      * @return string
      */
     public static function render_appointment_field($atts = []) {
-        // Accept attributes: type (services|time), label (string), elementor_prop (hidden field id)
+        // Accept attributes: type (services|time), label (string), elementor_prop (hidden field id), field_prop (target field id)
         $atts = shortcode_atts([
             'type' => 'time',
             'label' => '',
             'elementor_prop' => '',
+            'field_prop' => '',
+            'user' => '',
         ], $atts, self::SHORTCODE_TAG);
 
         $type = sanitize_text_field($atts['type']);
         $label = sanitize_text_field($atts['label']);
         $elementor_prop = sanitize_text_field($atts['elementor_prop']);
-        if ($type !== 'services' && $type !== 'time') {
+        $field_prop = sanitize_text_field($atts['field_prop']);
+        $username = sanitize_text_field($atts['user']);
+        if (!in_array($type, ['services', 'time', 'user', 'user_select'], true)) {
             $type = 'time';
+        }
+        if ($type === 'user') {
+            if ($username === '') {
+                return '<div class="csa-appointment-error">' . esc_html__('A valid user attribute (username) is required for this shortcode.', self::TEXT_DOMAIN) . '</div>';
+            }
+            if (!Access::resolve_enabled_user_id($username)) {
+                return '<div class="csa-appointment-error">' . esc_html__('The specified user is not enabled to use this booking form.', self::TEXT_DOMAIN) . '</div>';
+            }
         }
 
         $services = [];
+        $users = [];
         if ($type === 'services') {
-            $db = Database::get_instance();
-            $stored = $db->get_services();
+            if (Multisite::is_child()) {
+                $stored = Multisite::fetch_master_services();
+            } else {
+                $db = Database::get_instance();
+                $stored = $db->get_services();
+            }
             $labels = self::get_service_duration_labels();
             foreach ($stored as $service) {
                 if (!is_array($service)) {
@@ -126,12 +145,44 @@ class Shortcodes {
             }
         }
 
+        if ($type === 'user_select') {
+            $enabled_ids = Access::get_enabled_user_ids();
+            $admins = get_users([
+                'role' => 'administrator',
+                'fields' => ['ID'],
+            ]);
+            foreach ($admins as $admin) {
+                $enabled_ids[] = intval($admin->ID);
+            }
+            $enabled_ids = array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
+            if (!empty($enabled_ids)) {
+                $user_rows = get_users([
+                    'include' => $enabled_ids,
+                    'orderby' => 'display_name',
+                    'order' => 'ASC',
+                ]);
+                foreach ($user_rows as $user) {
+                    $display = trim($user->first_name . ' ' . $user->last_name);
+                    if ($display === '') {
+                        $display = $user->display_name;
+                    }
+                    $users[] = [
+                        'username' => $user->user_login,
+                        'label' => $display . ' (' . $user->user_login . ')',
+                    ];
+                }
+            }
+        }
+
         return AppointmentField::render([
             'text_domain' => self::TEXT_DOMAIN,
             'type' => $type,
             'label' => $label,
             'elementor_prop' => $elementor_prop,
+            'field_prop' => $field_prop,
             'services' => $services,
+            'user' => $username,
+            'users' => $users,
         ]);
     }
 
