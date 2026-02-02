@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Calendar Service Appointments Form
  * Description: A complete service appointment booking system with calendar interface and Elementor Pro forms integration via shortcodes.
- * Version: 1.5.4
+ * Version: 1.5.5
  * Author: Chris Paschall
  */
 
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION', '1.5.4');
+define('CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION', '1.5.5');
 
 require_once CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . 'src/Autoloader.php';
 
