@@ -265,4 +265,58 @@ class GitHubUpdater {
 
         return $response;
     }
+
+    public static function normalize_plugin_folder_on_load(): void {
+        $desired_folder = self::DESIRED_FOLDER;
+        $plugin_file = self::PLUGIN_FILE;
+
+        $plugins_dir = WP_PLUGIN_DIR;
+        $desired_dir = $plugins_dir . '/' . $desired_folder;
+
+        if (is_dir($desired_dir) && file_exists($desired_dir . '/' . $plugin_file)) {
+            return;
+        }
+
+        $candidates = glob($plugins_dir . '/*/' . $plugin_file);
+        if (empty($candidates)) {
+            return;
+        }
+
+        $current_dir = dirname($candidates[0]);
+        $current_folder = basename($current_dir);
+
+        if ($current_folder === $desired_folder) {
+            return;
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        WP_Filesystem();
+        global $wp_filesystem;
+
+        if (!$wp_filesystem) {
+            return;
+        }
+
+        if ($wp_filesystem->is_dir($desired_dir)) {
+            $wp_filesystem->delete($desired_dir, true);
+        }
+
+        $wp_filesystem->move($current_dir, $desired_dir, true);
+
+        $old_basename = $current_folder . '/' . $plugin_file;
+        $new_basename = $desired_folder . '/' . $plugin_file;
+
+        $active_plugins = get_option('active_plugins', []);
+        if (is_array($active_plugins)) {
+            $idx = array_search($old_basename, $active_plugins, true);
+            if ($idx !== false) {
+                $active_plugins[$idx] = $new_basename;
+                update_option('active_plugins', array_values($active_plugins));
+            }
+        }
+
+        if (function_exists('wp_clean_plugins_cache')) {
+            wp_clean_plugins_cache(true);
+        }
+    }
 }
