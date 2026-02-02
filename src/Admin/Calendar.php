@@ -170,8 +170,6 @@ class Calendar {
             wp_script_add_data(self::SCRIPT_HANDLE, 'type', 'module');
 
             $db = Database::get_instance();
-            $weekly = $db->get_weekly_availability();
-            $holiday_availability = $db->get_holiday_availability();
             $timezone = $db->get_timezone_string();
             $holiday_list = Holidays::get_upcoming_us_holidays($timezone);
             $services = $db->get_services();
@@ -196,6 +194,8 @@ class Calendar {
                     $selected_user_id = $candidate;
                 }
             }
+            $weekly = $db->get_weekly_availability($selected_user_id);
+            $holiday_availability = $db->get_holiday_availability($selected_user_id);
 
             wp_localize_script(self::SCRIPT_HANDLE, 'csaAdmin', [
                 'ajax_url' => admin_url('admin-ajax.php'),
@@ -430,9 +430,9 @@ class Calendar {
         $day_of_week = date('w', $first_day);
 
         $db = Database::get_instance();
-        $weekly = $db->get_weekly_availability();
-        $blocked_slots = $db->get_blocked_slots_for_month($year, $month);
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $blocked_slots = $db->get_blocked_slots_for_month($year, $month, $user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
 
         $appointments = $this->get_appointments_for_month($year, $month, $user_id);
         $today = $this->get_today_date();
@@ -472,7 +472,7 @@ class Calendar {
                     $holiday_closed = $holiday_key && !$holiday_enabled;
                     $dow = $col; // 0=Sun .. 6=Sat
                     $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-                    $overrides_for_date = $db->get_overrides_for_date($date);
+                    $overrides_for_date = $db->get_overrides_for_date($date, $user_id);
                     if ($holiday_closed) {
                         $has_available = false;
                     } else {

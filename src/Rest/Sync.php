@@ -268,10 +268,10 @@ class Sync {
         $db = Database::get_instance();
         $reserved = [];
         foreach ($slots as $slot) {
-            $ok = $db->reserve_time_slot($date, $slot);
+            $ok = $db->reserve_time_slot($date, $slot, $user_id);
             if (!$ok) {
                 foreach ($reserved as $r) {
-                    $db->unblock_time_slot($date, $r);
+                    $db->unblock_time_slot($date, $r, $user_id);
                 }
                 return new \WP_Error('csa_unavailable', __('That date and time is not available.', 'calendar-service-appointments-form'), ['status' => 400]);
             }
@@ -281,7 +281,7 @@ class Sync {
         $insert_id = $db->insert_appointment(null, $date, $time, $submission_data, $user_id);
         if (!$insert_id) {
             foreach ($reserved as $r) {
-                $db->unblock_time_slot($date, $r);
+                $db->unblock_time_slot($date, $r, $user_id);
             }
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 global $wpdb;
@@ -291,7 +291,7 @@ class Sync {
         }
 
         foreach ($reserved as $r) {
-            $db->unblock_time_slot($date, $r);
+            $db->unblock_time_slot($date, $r, $user_id);
         }
 
         return rest_ensure_response([

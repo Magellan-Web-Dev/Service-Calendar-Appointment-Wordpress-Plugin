@@ -109,13 +109,75 @@ class Database {
     }
 
     /**
+     * Normalize user id for scoped settings.
+     *
+     * @param int|null $user_id
+     * @return int
+     */
+    private function normalize_user_id($user_id) {
+        $user_id = $user_id !== null ? intval($user_id) : 0;
+        if ($user_id > 0) {
+            return $user_id;
+        }
+        return Access::get_default_admin_id();
+    }
+
+    /**
+     * Build a per-user option key.
+     *
+     * @param string $base
+     * @param int $user_id
+     * @return string
+     */
+    private function get_user_option_key($base, $user_id) {
+        return $base . '_user_' . intval($user_id);
+    }
+
+    /**
+     * Get a user-scoped option, migrating legacy global options if present.
+     *
+     * @param string $base
+     * @param int $user_id
+     * @return mixed|null
+     */
+    private function get_user_scoped_option($base, $user_id) {
+        $key = $this->get_user_option_key($base, $user_id);
+        $opt = get_option($key, null);
+        if ($opt !== null) {
+            return $opt;
+        }
+
+        $legacy = get_option($base, null);
+        if ($legacy !== null) {
+            update_option($key, $legacy);
+            return $legacy;
+        }
+
+        return null;
+    }
+
+    /**
+     * Save a user-scoped option.
+     *
+     * @param string $base
+     * @param int $user_id
+     * @param mixed $value
+     * @return bool
+     */
+    private function save_user_scoped_option($base, $user_id, $value) {
+        $key = $this->get_user_option_key($base, $user_id);
+        return update_option($key, $value);
+    }
+
+    /**
      * Get weekly availability from options
      *
      * @return array Weekday (0-6) => array of hour strings (HH:MM)
      */
-    public function get_weekly_availability() {
-        $opt = get_option(self::OPTION_WEEKLY_AVAILABILITY, false);
-        if ($opt === false) {
+    public function get_weekly_availability($user_id = null) {
+        $user_id = $this->normalize_user_id($user_id);
+        $opt = $this->get_user_scoped_option(self::OPTION_WEEKLY_AVAILABILITY, $user_id);
+        if ($opt === null) {
             // default: Mon-Fri at predefined 30-minute increments
             $default = [];
             for ($d = 0; $d <= 6; $d++) {
@@ -129,7 +191,7 @@ class Database {
             for ($d = 1; $d <= 5; $d++) {
                 $default[$d] = $default_times;
             }
-            update_option(self::OPTION_WEEKLY_AVAILABILITY, $default);
+            $this->save_user_scoped_option(self::OPTION_WEEKLY_AVAILABILITY, $user_id, $default);
             return $default;
         }
 
@@ -142,8 +204,9 @@ class Database {
      * @param array $availability
      * @return bool
      */
-    public function save_weekly_availability($availability) {
-        return update_option(self::OPTION_WEEKLY_AVAILABILITY, $availability);
+    public function save_weekly_availability($availability, $user_id = null) {
+        $user_id = $this->normalize_user_id($user_id);
+        return $this->save_user_scoped_option(self::OPTION_WEEKLY_AVAILABILITY, $user_id, $availability);
     }
 
     /**
@@ -151,12 +214,14 @@ class Database {
      *
      * @return array Array of enabled holiday keys.
      */
-    public function get_holiday_availability() {
-        $opt = get_option(self::OPTION_HOLIDAY_AVAILABILITY, []);
-        if (!is_array($opt)) {
-            return [];
+    public function get_holiday_availability($user_id = null) {
+        $user_id = $this->normalize_user_id($user_id);
+        $opt = $this->get_user_scoped_option(self::OPTION_HOLIDAY_AVAILABILITY, $user_id);
+        if ($opt === null) {
+            $opt = [];
+            $this->save_user_scoped_option(self::OPTION_HOLIDAY_AVAILABILITY, $user_id, $opt);
         }
-        return $opt;
+        return is_array($opt) ? $opt : [];
     }
 
     /**
@@ -165,8 +230,9 @@ class Database {
      * @param array $availability
      * @return bool
      */
-    public function save_holiday_availability($availability) {
-        return update_option(self::OPTION_HOLIDAY_AVAILABILITY, $availability);
+    public function save_holiday_availability($availability, $user_id = null) {
+        $user_id = $this->normalize_user_id($user_id);
+        return $this->save_user_scoped_option(self::OPTION_HOLIDAY_AVAILABILITY, $user_id, $availability);
     }
 
     /**
@@ -292,9 +358,14 @@ class Database {
      *
      * @return array date => [ 'HH:MM' => 'allow'|'block' ]
      */
-    public function get_manual_overrides() {
-        $opt = get_option(self::OPTION_MANUAL_OVERRIDES, []);
-        return (array) $opt;
+    public function get_manual_overrides($user_id = null) {
+        $user_id = $this->normalize_user_id($user_id);
+        $opt = $this->get_user_scoped_option(self::OPTION_MANUAL_OVERRIDES, $user_id);
+        if ($opt === null) {
+            $opt = [];
+            $this->save_user_scoped_option(self::OPTION_MANUAL_OVERRIDES, $user_id, $opt);
+        }
+        return is_array($opt) ? $opt : [];
     }
 
     /**
@@ -303,8 +374,8 @@ class Database {
      * @param string $date
      * @return array
      */
-    public function get_overrides_for_date($date) {
-        $all = $this->get_manual_overrides();
+    public function get_overrides_for_date($date, $user_id = null) {
+        $all = $this->get_manual_overrides($user_id);
         return isset($all[$date]) ? $all[$date] : [];
     }
 
@@ -316,8 +387,8 @@ class Database {
      * @param string $status 'allow' or 'block' or 'remove'
      * @return bool
      */
-    public function set_manual_override($date, $time, $status) {
-        $all = $this->get_manual_overrides();
+    public function set_manual_override($date, $time, $status, $user_id = null) {
+        $all = $this->get_manual_overrides($user_id);
         if (!isset($all[$date])) {
             $all[$date] = [];
         }
@@ -332,7 +403,8 @@ class Database {
             $all[$date][$time] = $status;
         }
 
-        return update_option(self::OPTION_MANUAL_OVERRIDES, $all);
+        $user_id = $this->normalize_user_id($user_id);
+        return $this->save_user_scoped_option(self::OPTION_MANUAL_OVERRIDES, $user_id, $all);
     }
 
     /**
@@ -343,18 +415,21 @@ class Database {
      * @param string $time Time in H:i:s format (or H:i).
      * @return bool True if reservation succeeded, false if already reserved.
      */
-    public function reserve_time_slot($date, $time) {
+    public function reserve_time_slot($date, $time, $user_id = null) {
         global $wpdb;
 
+        $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
+        $user_id = $this->normalize_user_id($user_id);
 
         $result = $wpdb->insert(
             $this->table_name,
             [
                 'block_date' => $utc['date'],
                 'block_time' => $utc['time'],
+                'user_id' => $user_id,
             ],
-            ['%s', '%s']
+            ['%s', '%s', '%d']
         );
 
         if ($result === false) {
@@ -380,14 +455,41 @@ class Database {
             id bigint(20) NOT NULL AUTO_INCREMENT,
             block_date date NOT NULL,
             block_time time NOT NULL,
+            user_id bigint(20) DEFAULT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
-            UNIQUE KEY date_time (block_date, block_time)
+            UNIQUE KEY date_time_user (block_date, block_time, user_id),
+            KEY user_id (user_id)
         ) $charset_collate;";
 
         // Create tables
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
+
+        $blocked_table_esc = esc_sql($table_name);
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$blocked_table_esc} LIKE 'user_id'");
+        if (empty($col)) {
+            $alter = "ALTER TABLE {$table_name} ADD COLUMN user_id BIGINT(20) DEFAULT NULL";
+            $wpdb->query($alter);
+            $wpdb->query("ALTER TABLE {$table_name} ADD KEY user_id (user_id)");
+        }
+
+        $has_old_index = $wpdb->get_results("SHOW INDEX FROM {$blocked_table_esc} WHERE Key_name = 'date_time'");
+        if (!empty($has_old_index)) {
+            $wpdb->query("ALTER TABLE {$table_name} DROP INDEX date_time");
+        }
+        $has_new_index = $wpdb->get_results("SHOW INDEX FROM {$blocked_table_esc} WHERE Key_name = 'date_time_user'");
+        if (empty($has_new_index)) {
+            $wpdb->query("ALTER TABLE {$table_name} ADD UNIQUE KEY date_time_user (block_date, block_time, user_id)");
+        }
+
+        $default_admin = Access::get_default_admin_id();
+        if ($default_admin > 0) {
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$table_name} SET user_id = %d WHERE user_id IS NULL OR user_id = 0",
+                $default_admin
+            ));
+        }
 
         // Create appointments table to store parsed Elementor submissions
         $appt_table = $wpdb->prefix . self::TABLE_APPOINTMENTS;
@@ -896,23 +998,62 @@ class Database {
     }
 
     /**
+     * Ensure blocked slots table has user_id column and indexes.
+     *
+     * @return void
+     */
+    private function ensure_blocked_slots_user_column() {
+        global $wpdb;
+        if (!$this->does_table_exist($this->table_name)) {
+            return;
+        }
+        if ($this->table_has_column($this->table_name, 'user_id')) {
+            return;
+        }
+
+        $table = esc_sql($this->table_name);
+        $wpdb->query("ALTER TABLE {$table} ADD COLUMN user_id BIGINT(20) DEFAULT NULL");
+        $wpdb->query("ALTER TABLE {$table} ADD KEY user_id (user_id)");
+
+        $has_old_index = $wpdb->get_results("SHOW INDEX FROM {$table} WHERE Key_name = 'date_time'");
+        if (!empty($has_old_index)) {
+            $wpdb->query("ALTER TABLE {$table} DROP INDEX date_time");
+        }
+        $has_new_index = $wpdb->get_results("SHOW INDEX FROM {$table} WHERE Key_name = 'date_time_user'");
+        if (empty($has_new_index)) {
+            $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY date_time_user (block_date, block_time, user_id)");
+        }
+
+        $default_admin = Access::get_default_admin_id();
+        if ($default_admin > 0) {
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$table} SET user_id = %d WHERE user_id IS NULL OR user_id = 0",
+                $default_admin
+            ));
+        }
+    }
+
+    /**
      * Block a time slot
      *
      * @param string $date Date in Y-m-d format.
      * @param string $time Time in H:i:s format.
      * @return int|false The number of rows inserted, or false on error.
      */
-    public function block_time_slot($date, $time) {
+    public function block_time_slot($date, $time, $user_id = null) {
         global $wpdb;
+        $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
+        $user_id = $this->normalize_user_id($user_id);
 
         return $wpdb->insert(
             $this->table_name,
             [
                 'block_date' => $utc['date'],
                 'block_time' => $utc['time'],
+                'user_id' => $user_id,
             ],
-            ['%s', '%s']
+            ['%s', '%s', '%d']
         );
     }
 
@@ -923,17 +1064,20 @@ class Database {
      * @param string $time Time in H:i:s format.
      * @return int|false The number of rows deleted, or false on error.
      */
-    public function unblock_time_slot($date, $time) {
+    public function unblock_time_slot($date, $time, $user_id = null) {
         global $wpdb;
+        $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
+        $user_id = $this->normalize_user_id($user_id);
 
         return $wpdb->delete(
             $this->table_name,
             [
                 'block_date' => $utc['date'],
                 'block_time' => $utc['time'],
+                'user_id' => $user_id,
             ],
-            ['%s', '%s']
+            ['%s', '%s', '%d']
         );
     }
 
@@ -944,14 +1088,17 @@ class Database {
      * @param string $time Time in H:i:s format.
      * @return bool True if blocked, false otherwise.
      */
-    public function is_slot_blocked($date, $time) {
+    public function is_slot_blocked($date, $time, $user_id = null) {
         global $wpdb;
+        $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
+        $user_id = $this->normalize_user_id($user_id);
 
         $count = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$this->table_name} WHERE block_date = %s AND block_time = %s",
+            "SELECT COUNT(*) FROM {$this->table_name} WHERE block_date = %s AND block_time = %s AND user_id = %d",
             $utc['date'],
-            $utc['time']
+            $utc['time'],
+            $user_id
         ));
 
         return $count > 0;
@@ -964,17 +1111,20 @@ class Database {
      * @param int $month Month.
      * @return array Array of blocked slots.
      */
-    public function get_blocked_slots_for_month($year, $month) {
+    public function get_blocked_slots_for_month($year, $month, $user_id = null) {
         global $wpdb;
+        $this->ensure_blocked_slots_user_column();
+        $user_id = $this->normalize_user_id($user_id);
 
         $range = $this->get_utc_range_for_local_month($year, $month);
 
         $results = $wpdb->get_results($wpdb->prepare(
             "SELECT block_date, block_time FROM {$this->table_name}
-            WHERE CONCAT(block_date, ' ', block_time) BETWEEN %s AND %s
+            WHERE CONCAT(block_date, ' ', block_time) BETWEEN %s AND %s AND user_id = %d
             ORDER BY block_date, block_time",
             $range['start'],
-            $range['end']
+            $range['end'],
+            $user_id
         ), ARRAY_A);
 
         $out = [];
@@ -995,16 +1145,19 @@ class Database {
      * @param string $date Date in Y-m-d format.
      * @return array Array of blocked slots.
      */
-    public function get_blocked_slots_for_date($date) {
+    public function get_blocked_slots_for_date($date, $user_id = null) {
         global $wpdb;
+        $this->ensure_blocked_slots_user_column();
+        $user_id = $this->normalize_user_id($user_id);
 
         $range = $this->get_utc_range_for_local_date($date);
         $results = $wpdb->get_results($wpdb->prepare(
             "SELECT block_date, block_time FROM {$this->table_name}
-            WHERE CONCAT(block_date, ' ', block_time) BETWEEN %s AND %s
+            WHERE CONCAT(block_date, ' ', block_time) BETWEEN %s AND %s AND user_id = %d
             ORDER BY block_date, block_time",
             $range['start'],
-            $range['end']
+            $range['end'],
+            $user_id
         ), ARRAY_A);
 
         $out = [];

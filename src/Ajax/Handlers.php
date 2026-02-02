@@ -151,7 +151,7 @@ class Handlers {
         }
 
         $db = Database::get_instance();
-        $blocked_slots = $db->get_blocked_slots_for_date($date);
+        $blocked_slots = $db->get_blocked_slots_for_date($date, $user_id);
         if (!is_array($blocked_slots)) {
             $blocked_slots = [];
         }
@@ -163,11 +163,11 @@ class Handlers {
         }
         $service_duration_map = $this->get_service_duration_map();
 
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
         $dow = date('w', strtotime($date));
         $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date);
+        $overrides = $db->get_overrides_for_date($date, $user_id);
         $holiday_key = Holidays::get_us_holiday_key_for_date($date);
         $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
         $holiday_closed = $holiday_key && !$holiday_enabled;
@@ -437,18 +437,18 @@ class Handlers {
             wp_send_json_error(['message' => __('Unable to determine service duration for this appointment.', self::TEXT_DOMAIN)]);
         }
 
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
         $dow = date('w', strtotime($date));
         $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date);
+        $overrides = $db->get_overrides_for_date($date, $user_id);
         $holiday_key = Holidays::get_us_holiday_key_for_date($date);
         $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
         $holiday_closed = $holiday_key && !$holiday_enabled;
 
         $hours = $this->get_business_hours();
         $hours_set = array_fill_keys($hours, true);
-        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date));
+        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date, $user_id));
 
         $appointment_user_id = isset($appt['user_id']) ? intval($appt['user_id']) : $this->resolve_request_user_id(true);
         $submissions = Submissions::get_instance();
@@ -510,7 +510,7 @@ class Handlers {
         }
         $service_duration_map = $this->get_service_duration_map();
         $booked_set = $this->build_booked_set($appointments, $service_duration_map);
-        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date));
+        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date, $user_id));
         $hours = $this->get_business_hours();
         $hours_set = array_fill_keys($hours, true);
         $slots_needed = $this->get_slots_needed($duration_seconds);
@@ -593,8 +593,9 @@ class Handlers {
             wp_send_json_error(['message' => __('Invalid date or time', self::TEXT_DOMAIN)]);
         }
 
+        $user_id = $this->resolve_request_user_id(true);
         $db = Database::get_instance();
-        $result = $db->block_time_slot($date, $time . ':00');
+        $result = $db->block_time_slot($date, $time . ':00', $user_id);
 
         if ($result) {
             wp_send_json_success(['message' => __('Time slot blocked successfully', self::TEXT_DOMAIN)]);
@@ -622,8 +623,9 @@ class Handlers {
             wp_send_json_error(['message' => __('Invalid date or time', self::TEXT_DOMAIN)]);
         }
 
+        $user_id = $this->resolve_request_user_id(true);
         $db = Database::get_instance();
-        $result = $db->unblock_time_slot($date, $time . ':00');
+        $result = $db->unblock_time_slot($date, $time . ':00', $user_id);
 
         if ($result) {
             wp_send_json_success(['message' => __('Time slot unblocked successfully', self::TEXT_DOMAIN)]);
@@ -679,15 +681,15 @@ class Handlers {
         }
 
         $db = Database::get_instance();
-        $blocked_slots = $db->get_blocked_slots_for_date($date);
+        $blocked_slots = $db->get_blocked_slots_for_date($date, $user_id);
         $submissions = Submissions::get_instance();
         $appointments = $submissions->get_appointments_for_date($date, $user_id);
 
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
         $dow = date('w', strtotime($date));
         $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date);
+        $overrides = $db->get_overrides_for_date($date, $user_id);
         $holiday_key = Holidays::get_us_holiday_key_for_date($date);
         $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
         $holiday_closed = $holiday_key && !$holiday_enabled;
@@ -750,8 +752,8 @@ class Handlers {
             $has = false;
             $days_in_month = (int)$m->format('t');
 
-            $weekly = $db->get_weekly_availability();
-            $holiday_availability = $db->get_holiday_availability();
+            $weekly = $db->get_weekly_availability($user_id);
+            $holiday_availability = $db->get_holiday_availability($user_id);
 
             for ($d = 1; $d <= $days_in_month; $d++) {
                 $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
@@ -760,14 +762,14 @@ class Handlers {
                 }
                 $dow = (int)date('w', strtotime($dateStr));
                 $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-                $overrides = $db->get_overrides_for_date($dateStr);
+                $overrides = $db->get_overrides_for_date($dateStr, $user_id);
                 $holiday_key = Holidays::get_us_holiday_key_for_date($dateStr);
                 $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
                 $holiday_closed = $holiday_key && !$holiday_enabled;
 
                 $hours = $this->get_business_hours();
                 $hours_set = array_fill_keys($hours, true);
-                $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr));
+                $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr, $user_id));
                 $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr, $user_id), $service_duration_map);
                 foreach ($hours as $time) {
                     if ($dateStr === $today && $now) {
@@ -839,8 +841,8 @@ class Handlers {
         list($year, $mon) = array_map('intval', explode('-', $month));
         $db = Database::get_instance();
         $submissions = Submissions::get_instance();
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
         $service_duration_map = $this->get_service_duration_map();
 
         $tz = $this->get_timezone_object();
@@ -859,14 +861,14 @@ class Handlers {
             }
             $dow = (int)date('w', strtotime($dateStr));
             $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-            $overrides = $db->get_overrides_for_date($dateStr);
+            $overrides = $db->get_overrides_for_date($dateStr, $user_id);
             $holiday_key = Holidays::get_us_holiday_key_for_date($dateStr);
             $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
             $holiday_closed = $holiday_key && !$holiday_enabled;
 
             $hours = $this->get_business_hours();
             $hours_set = array_fill_keys($hours, true);
-            $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr));
+            $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($dateStr, $user_id));
             $booked_set = $this->build_booked_set($submissions->get_appointments_for_date($dateStr, $user_id), $service_duration_map);
             foreach ($hours as $time) {
                 if ($dateStr === $today && $now) {
@@ -909,18 +911,18 @@ class Handlers {
         $start_time = strlen($start_time) >= 5 ? substr($start_time, 0, 5) : $start_time;
 
         $db = Database::get_instance();
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
         $dow = date('w', strtotime($date));
         $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date);
+        $overrides = $db->get_overrides_for_date($date, $user_id);
         $holiday_key = Holidays::get_us_holiday_key_for_date($date);
         $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
         $holiday_closed = $holiday_key && !$holiday_enabled;
 
         $hours = $this->get_business_hours();
         $hours_set = array_fill_keys($hours, true);
-        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date));
+        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date, $user_id));
         $service_duration_map = $this->get_service_duration_map();
         $appointments = Submissions::get_instance()->get_appointments_for_date($date, $user_id);
         if (!is_array($appointments)) {
@@ -961,8 +963,9 @@ class Handlers {
             wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
         }
 
+        $user_id = $this->resolve_request_user_id(true);
         $db = Database::get_instance();
-        $weekly = $db->get_weekly_availability();
+        $weekly = $db->get_weekly_availability($user_id);
         wp_send_json_success(['weekly' => $weekly]);
     }
 
@@ -985,8 +988,9 @@ class Handlers {
             wp_send_json_error(['message' => __('Invalid format', self::TEXT_DOMAIN)]);
         }
 
+        $user_id = $this->resolve_request_user_id(true);
         $db = Database::get_instance();
-        $ok = $db->save_weekly_availability($weekly);
+        $ok = $db->save_weekly_availability($weekly, $user_id);
         if ($ok) {
             wp_send_json_success(['message' => __('Weekly availability saved', self::TEXT_DOMAIN)]);
         }
@@ -1041,8 +1045,9 @@ class Handlers {
             wp_send_json_error(['message' => __('Invalid format', self::TEXT_DOMAIN)]);
         }
 
+        $user_id = $this->resolve_request_user_id(true);
         $db = Database::get_instance();
-        $ok = $db->save_holiday_availability($holidays);
+        $ok = $db->save_holiday_availability($holidays, $user_id);
         if ($ok) {
             wp_send_json_success(['message' => __('Holiday availability saved', self::TEXT_DOMAIN)]);
         }
@@ -1067,8 +1072,9 @@ class Handlers {
             wp_send_json_error(['message' => __('Invalid parameters', self::TEXT_DOMAIN)]);
         }
 
+        $user_id = $this->resolve_request_user_id(true);
         $db = Database::get_instance();
-        $ok = $db->set_manual_override($date, $time, $status);
+        $ok = $db->set_manual_override($date, $time, $status, $user_id);
         if ($ok) {
             wp_send_json_success(['message' => __('Override saved', self::TEXT_DOMAIN)]);
         }

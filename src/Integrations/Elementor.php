@@ -320,7 +320,7 @@ class Elementor {
             return;
         }
 
-        $reserved = $this->reserve_time_range($appointment_date, $slots, $db);
+        $reserved = $this->reserve_time_range($appointment_date, $slots, $db, $user_id);
         $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 
         if (! $reserved) {
@@ -1096,11 +1096,11 @@ class Elementor {
      * @return bool
      */
     private function is_time_range_available($date, $slots, $db, $submissions, $user_id = null) {
-        $weekly = $db->get_weekly_availability();
-        $holiday_availability = $db->get_holiday_availability();
+        $weekly = $db->get_weekly_availability($user_id);
+        $holiday_availability = $db->get_holiday_availability($user_id);
         $dow = date('w', strtotime($date));
         $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date);
+        $overrides = $db->get_overrides_for_date($date, $user_id);
         $holiday_key = \CalendarServiceAppointmentsForm\Core\Holidays::get_us_holiday_key_for_date($date);
         $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
         $holiday_closed = $holiday_key && !$holiday_enabled;
@@ -1128,7 +1128,7 @@ class Elementor {
                 return false;
             }
 
-            if ($db->is_slot_blocked($date, $time) || $submissions->is_slot_booked($date, $time, $user_id)) {
+            if ($db->is_slot_blocked($date, $time, $user_id) || $submissions->is_slot_booked($date, $time, $user_id)) {
                 return false;
             }
         }
@@ -1144,13 +1144,13 @@ class Elementor {
      * @param Database $db
      * @return bool
      */
-    private function reserve_time_range($date, $slots, $db) {
+    private function reserve_time_range($date, $slots, $db, $user_id = null) {
         $reserved = [];
         foreach ($slots as $time) {
-            $ok = $db->reserve_time_slot($date, $time);
+            $ok = $db->reserve_time_slot($date, $time, $user_id);
             if (!$ok) {
                 foreach ($reserved as $t) {
-                    $db->unblock_time_slot($date, $t);
+                    $db->unblock_time_slot($date, $t, $user_id);
                 }
                 return false;
             }
