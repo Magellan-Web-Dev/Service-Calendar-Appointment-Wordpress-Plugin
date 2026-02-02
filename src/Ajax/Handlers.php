@@ -113,219 +113,14 @@ class Handlers {
 
             $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
 
-            if (empty($date)) {
-                wp_send_json_error(['message' => __('Invalid date', self::TEXT_DOMAIN)]);
-            }
-
-            $db = Database::get_instance();
-            $blocked_slots = $db->get_blocked_slots_for_date($date);
-            if (!is_array($blocked_slots)) {
-                $blocked_slots = [];
-            }
-
-            $submissions = Submissions::get_instance();
-            $appointments = $submissions->get_appointments_for_date($date);
-            if (!is_array($appointments)) {
-                $appointments = [];
-            }
-            $service_duration_map = $this->get_service_duration_map();
-
-            $weekly = $db->get_weekly_availability();
-            $holiday_availability = $db->get_holiday_availability();
-            $dow = date('w', strtotime($date));
-            $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-            $overrides = $db->get_overrides_for_date($date);
-            $holiday_key = Holidays::get_us_holiday_key_for_date($date);
-            $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
-            $holiday_closed = $holiday_key && !$holiday_enabled;
-
-            $time_slots = [];
-            $occupied_times = [];
-            $hours = $this->get_business_hours();
-            foreach ($hours as $time) {
-
-                if ($holiday_closed) {
-                    $is_default_available = false;
-                } else {
-                    $is_default_available = in_array($time, $default_hours, true);
-                    if (isset($overrides[$time])) {
-                        if ($overrides[$time] === 'allow') {
-                            $is_default_available = true;
-                        } elseif ($overrides[$time] === 'block') {
-                            $is_default_available = false;
-                        }
-                    }
-                }
-
-                $is_blocked_explicit = false;
-                foreach ($blocked_slots as $slot) {
-                    if (!is_array($slot) || empty($slot['block_time'])) {
-                        continue;
-                    }
-                    if (substr((string) $slot['block_time'], 0, 5) == $time) {
-                        $is_blocked_explicit = true;
-                        break;
-                    }
-                }
-
-                // collect first appointment that matches this time
-                $matching = null;
-                foreach ($appointments as $apt) {
-                    if (!is_array($apt) || empty($apt['time'])) {
-                        continue;
-                    }
-                    $apt_time = $this->normalize_time_value($apt['time']);
-                    if ($apt_time === '') {
-                        continue;
-                    }
-                    if ($apt_time == $time) {
-                        $duration_seconds = $this->get_appointment_duration_seconds($apt, $service_duration_map);
-                        if ($duration_seconds > 0) {
-                            $slots_needed = $this->get_slots_needed($duration_seconds);
-                            for ($i = 1; $i < $slots_needed; $i++) {
-                                $next_time = $this->add_minutes($time, 30 * $i);
-                                if ($next_time) {
-                                    $occupied_times[$next_time] = true;
-                                }
-                            }
-                            $apt['duration_seconds'] = $duration_seconds;
-                            $apt['end_time'] = $this->add_minutes($time, 30 * $slots_needed);
-                        } else {
-                            $apt['duration_seconds'] = 0;
-                        }
-                        $matching = $apt;
-                        break;
-                    }
-                }
-
-                if (empty($matching) && isset($occupied_times[$time])) {
-                    $time_slots[] = [
-                        'time' => $time,
-                        'is_default_available' => $is_default_available,
-                        'is_blocked_explicit' => $is_blocked_explicit,
-                        'is_occupied' => true,
-                        'slot_duration_seconds' => 1800,
-                    ];
-                    continue;
-                }
-
-                $slot_payload = [
-                    'time' => $time,
-                    'is_default_available' => $is_default_available,
-                    'is_blocked_explicit' => $is_blocked_explicit,
-                    'is_occupied' => false,
-                    'slot_duration_seconds' => 1800,
-                ];
-                if (!empty($matching)) {
-                    $slot_payload['appointments'] = $matching;
-                }
-                $time_slots[] = $slot_payload;
-            }
-
-            // Enrich appointments with full submission fields when possible
-            if (!empty($time_slots)) {
-                foreach ($time_slots as &$slot) {
-                    if (empty($slot['appointments'])) {
-                        continue;
-                    }
-                    $appt = $slot['appointments'];
-                    if (empty($appt['id'])) {
-                        continue;
-                    }
-
-                    // If the appointments table stored submission_data, prefer that
-                    $full = [];
-                    if (!empty($appt['submission_data']) && is_array($appt['submission_data'])) {
-                        $full = [
-                            'id' => isset($appt['id']) ? $appt['id'] : null,
-                            'date' => isset($appt['date']) ? $appt['date'] : null,
-                            'time' => isset($appt['time']) ? $appt['time'] : null,
-                            'all_data' => $appt['submission_data'],
-                        ];
-                    }
-
-                    // Fallback to the Submissions helper to get parsed fields
-                    if (empty($full) || empty($full['all_data'])) {
-                        $helper = $submissions->get_appointment_by_submission_id($appt['id']);
-                        if (!empty($helper)) {
-                            $full = array_merge($full, $helper);
-                        }
-                    }
-
-                    // If helper didn't return all_data, attempt a direct fallback to the Elementor values table
-                    if ((empty($full) || empty($full['all_data'])) && !empty($appt['id'])) {
-                        global $wpdb;
-                        $values_table = $wpdb->prefix . Submissions::TABLE_SUBMISSION_VALUES;
-                        $values_table_exists = (bool) $wpdb->get_var("SHOW TABLES LIKE '" . esc_sql($values_table) . "'");
-                        if ($values_table_exists) {
-                            $vals = $wpdb->get_results($wpdb->prepare(
-                                "SELECT `key`, `value` FROM {$values_table} WHERE submission_id = %d",
-                                intval($appt['id'])
-                            ), ARRAY_A);
-                            $all = [];
-                            foreach ($vals as $v) {
-                                $all[$v['key']] = $v['value'];
-                            }
-                            if (empty($full)) {
-                                $full = [];
-                            }
-                            $full['all_data'] = $all;
-                        }
-                    }
-
-                    if (!empty($full)) {
-                        if (isset($appt['appt_id'])) {
-                            $full['appt_id'] = $appt['appt_id'];
-                        }
-                        if (empty($full['time'])) { $full['time'] = isset($appt['time']) ? $appt['time'] : null; }
-                        if (empty($full['date'])) { $full['date'] = isset($appt['date']) ? $appt['date'] : null; }
-                        // merge created_at if missing
-                        if (empty($full['created_at']) && isset($appt['created_at'])) {
-                            $full['created_at'] = $appt['created_at'];
-                        }
-                        if (!isset($full['submitted_at_unix']) && isset($appt['submitted_at_unix'])) {
-                            $full['submitted_at_unix'] = $appt['submitted_at_unix'];
-                        }
-                        if (!empty($full['all_data']) && is_array($full['all_data'])) {
-                            if (!empty($full['all_data']['csa_service'])) {
-                                $full['service'] = is_string($full['all_data']['csa_service'])
-                                    ? $this->normalize_service_title($full['all_data']['csa_service'])
-                                    : $full['all_data']['csa_service'];
-                            } else {
-                                foreach ($full['all_data'] as $key => $val) {
-                                    if (stripos($key, 'service') !== false) {
-                                        $full['service'] = is_string($val) ? $this->normalize_service_title($val) : $val;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (!empty($full['all_data']['csa_custom_appointment'])) {
-                                $custom_title = isset($full['all_data']['csa_custom_title']) ? $full['all_data']['csa_custom_title'] : '';
-                                $custom_title = is_string($custom_title) ? trim($custom_title) : '';
-                                $full['name'] = $custom_title !== '' ? $custom_title : __('Custom Appointment', self::TEXT_DOMAIN);
-                            }
-                        }
-                        $duration_seconds = $this->get_appointment_duration_seconds($full, $service_duration_map);
-                        if ($duration_seconds > 0) {
-                            $slots_needed = $this->get_slots_needed($duration_seconds);
-                            $end_time = $this->add_minutes(substr($full['time'], 0, 5), 30 * $slots_needed);
-                            $full['duration_seconds'] = $duration_seconds;
-                            $full['end_time'] = $end_time ? $end_time : null;
-                        } else {
-                            $full['duration_seconds'] = 0;
-                        }
-                        $slot['appointments'] = $full;
-                    }
-                }
-                unset($slot);
+            $payload = $this->build_day_details_payload($date);
+            if (is_wp_error($payload)) {
+                restore_error_handler();
+                wp_send_json_error(['message' => $payload->get_error_message()]);
             }
 
             restore_error_handler();
-            wp_send_json_success([
-                'date' => $date,
-                'timezone_label' => $this->get_timezone_label(),
-                'time_slots' => $time_slots,
-            ]);
+            wp_send_json_success($payload);
         } catch (\Throwable $e) {
             restore_error_handler();
             $message = __('Error loading day details.', self::TEXT_DOMAIN);
@@ -335,6 +130,231 @@ class Handlers {
             }
             wp_send_json_error(['message' => $message]);
         }
+    }
+
+    /**
+     * Build day details payload (shared by AJAX + REST).
+     *
+     * @param string $date
+     * @return array|\WP_Error
+     */
+    public function build_day_details_payload($date) {
+        $date = is_string($date) ? trim($date) : '';
+        if ($date === '') {
+            return new \WP_Error('csa_invalid_date', __('Invalid date', self::TEXT_DOMAIN), ['status' => 400]);
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return new \WP_Error('csa_invalid_date', __('Invalid date format', self::TEXT_DOMAIN), ['status' => 400]);
+        }
+
+        $db = Database::get_instance();
+        $blocked_slots = $db->get_blocked_slots_for_date($date);
+        if (!is_array($blocked_slots)) {
+            $blocked_slots = [];
+        }
+
+        $submissions = Submissions::get_instance();
+        $appointments = $submissions->get_appointments_for_date($date);
+        if (!is_array($appointments)) {
+            $appointments = [];
+        }
+        $service_duration_map = $this->get_service_duration_map();
+
+        $weekly = $db->get_weekly_availability();
+        $holiday_availability = $db->get_holiday_availability();
+        $dow = date('w', strtotime($date));
+        $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
+        $overrides = $db->get_overrides_for_date($date);
+        $holiday_key = Holidays::get_us_holiday_key_for_date($date);
+        $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
+        $holiday_closed = $holiday_key && !$holiday_enabled;
+
+        $time_slots = [];
+        $occupied_times = [];
+        $hours = $this->get_business_hours();
+        foreach ($hours as $time) {
+
+            if ($holiday_closed) {
+                $is_default_available = false;
+            } else {
+                $is_default_available = in_array($time, $default_hours, true);
+                if (isset($overrides[$time])) {
+                    if ($overrides[$time] === 'allow') {
+                        $is_default_available = true;
+                    } elseif ($overrides[$time] === 'block') {
+                        $is_default_available = false;
+                    }
+                }
+            }
+
+            $is_blocked_explicit = false;
+            foreach ($blocked_slots as $slot) {
+                if (!is_array($slot) || empty($slot['block_time'])) {
+                    continue;
+                }
+                if (substr((string) $slot['block_time'], 0, 5) == $time) {
+                    $is_blocked_explicit = true;
+                    break;
+                }
+            }
+
+            // collect first appointment that matches this time
+            $matching = null;
+            foreach ($appointments as $apt) {
+                if (!is_array($apt) || empty($apt['time'])) {
+                    continue;
+                }
+                $apt_time = $this->normalize_time_value($apt['time']);
+                if ($apt_time === '') {
+                    continue;
+                }
+                if ($apt_time == $time) {
+                    $duration_seconds = $this->get_appointment_duration_seconds($apt, $service_duration_map);
+                    if ($duration_seconds > 0) {
+                        $slots_needed = $this->get_slots_needed($duration_seconds);
+                        for ($i = 1; $i < $slots_needed; $i++) {
+                            $next_time = $this->add_minutes($time, 30 * $i);
+                            if ($next_time) {
+                                $occupied_times[$next_time] = true;
+                            }
+                        }
+                        $apt['duration_seconds'] = $duration_seconds;
+                        $apt['end_time'] = $this->add_minutes($time, 30 * $slots_needed);
+                    } else {
+                        $apt['duration_seconds'] = 0;
+                    }
+                    $matching = $apt;
+                    break;
+                }
+            }
+
+            if (empty($matching) && isset($occupied_times[$time])) {
+                $time_slots[] = [
+                    'time' => $time,
+                    'is_default_available' => $is_default_available,
+                    'is_blocked_explicit' => $is_blocked_explicit,
+                    'is_occupied' => true,
+                    'slot_duration_seconds' => 1800,
+                ];
+                continue;
+            }
+
+            $slot_payload = [
+                'time' => $time,
+                'is_default_available' => $is_default_available,
+                'is_blocked_explicit' => $is_blocked_explicit,
+                'is_occupied' => false,
+                'slot_duration_seconds' => 1800,
+            ];
+            if (!empty($matching)) {
+                $slot_payload['appointments'] = $matching;
+            }
+            $time_slots[] = $slot_payload;
+        }
+
+        // Enrich appointments with full submission fields when possible
+        if (!empty($time_slots)) {
+            foreach ($time_slots as &$slot) {
+                if (empty($slot['appointments'])) {
+                    continue;
+                }
+                $appt = $slot['appointments'];
+                if (empty($appt['id'])) {
+                    continue;
+                }
+
+                // If the appointments table stored submission_data, prefer that
+                $full = [];
+                if (!empty($appt['submission_data']) && is_array($appt['submission_data'])) {
+                    $full = [
+                        'id' => isset($appt['id']) ? $appt['id'] : null,
+                        'date' => isset($appt['date']) ? $appt['date'] : null,
+                        'time' => isset($appt['time']) ? $appt['time'] : null,
+                        'all_data' => $appt['submission_data'],
+                    ];
+                }
+
+                // Fallback to the Submissions helper to get parsed fields
+                if (empty($full) || empty($full['all_data'])) {
+                    $helper = $submissions->get_appointment_by_submission_id($appt['id']);
+                    if (!empty($helper)) {
+                        $full = array_merge($full, $helper);
+                    }
+                }
+
+                // If helper didn't return all_data, attempt a direct fallback to the Elementor values table
+                if ((empty($full) || empty($full['all_data'])) && !empty($appt['id'])) {
+                    global $wpdb;
+                    $values_table = $wpdb->prefix . Submissions::TABLE_SUBMISSION_VALUES;
+                    $values_table_exists = (bool) $wpdb->get_var("SHOW TABLES LIKE '" . esc_sql($values_table) . "'");
+                    if ($values_table_exists) {
+                        $vals = $wpdb->get_results($wpdb->prepare(
+                            "SELECT `key`, `value` FROM {$values_table} WHERE submission_id = %d",
+                            intval($appt['id'])
+                        ), ARRAY_A);
+                        $all = [];
+                        foreach ($vals as $v) {
+                            $all[$v['key']] = $v['value'];
+                        }
+                        if (empty($full)) {
+                            $full = [];
+                        }
+                        $full['all_data'] = $all;
+                    }
+                }
+
+                if (!empty($full)) {
+                    if (isset($appt['appt_id'])) {
+                        $full['appt_id'] = $appt['appt_id'];
+                    }
+                    if (empty($full['time'])) { $full['time'] = isset($appt['time']) ? $appt['time'] : null; }
+                    if (empty($full['date'])) { $full['date'] = isset($appt['date']) ? $appt['date'] : null; }
+                    // merge created_at if missing
+                    if (empty($full['created_at']) && isset($appt['created_at'])) {
+                        $full['created_at'] = $appt['created_at'];
+                    }
+                    if (!isset($full['submitted_at_unix']) && isset($appt['submitted_at_unix'])) {
+                        $full['submitted_at_unix'] = $appt['submitted_at_unix'];
+                    }
+                    if (!empty($full['all_data']) && is_array($full['all_data'])) {
+                        if (!empty($full['all_data']['csa_service'])) {
+                            $full['service'] = is_string($full['all_data']['csa_service'])
+                                ? $this->normalize_service_title($full['all_data']['csa_service'])
+                                : $full['all_data']['csa_service'];
+                        } else {
+                            foreach ($full['all_data'] as $key => $val) {
+                                if (stripos($key, 'service') !== false) {
+                                    $full['service'] = is_string($val) ? $this->normalize_service_title($val) : $val;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!empty($full['all_data']['csa_custom_appointment'])) {
+                            $custom_title = isset($full['all_data']['csa_custom_title']) ? $full['all_data']['csa_custom_title'] : '';
+                            $custom_title = is_string($custom_title) ? trim($custom_title) : '';
+                            $full['name'] = $custom_title !== '' ? $custom_title : __('Custom Appointment', self::TEXT_DOMAIN);
+                        }
+                    }
+                    $duration_seconds = $this->get_appointment_duration_seconds($full, $service_duration_map);
+                    if ($duration_seconds > 0) {
+                        $slots_needed = $this->get_slots_needed($duration_seconds);
+                        $end_time = $this->add_minutes(substr($full['time'], 0, 5), 30 * $slots_needed);
+                        $full['duration_seconds'] = $duration_seconds;
+                        $full['end_time'] = $end_time ? $end_time : null;
+                    } else {
+                        $full['duration_seconds'] = 0;
+                    }
+                    $slot['appointments'] = $full;
+                }
+            }
+            unset($slot);
+        }
+
+        return [
+            'date' => $date,
+            'timezone_label' => $this->get_timezone_label(),
+            'time_slots' => $time_slots,
+        ];
     }
 
     /**

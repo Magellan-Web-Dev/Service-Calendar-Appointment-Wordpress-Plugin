@@ -98,6 +98,7 @@ class Plugin {
         Admin\Calendar::get_instance();
         Ajax\Handlers::get_instance();
         Integrations\Elementor::get_instance();
+        Rest\DayDetails::get_instance();
         Updates\GitHubUpdater::init();
 
         // schedule cleanup hook responder
