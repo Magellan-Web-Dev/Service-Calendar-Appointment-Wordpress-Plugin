@@ -15,18 +15,32 @@ class GitHubUpdater {
     private const REPO = 'Magellan-Web-Dev/Service-Calendar-Appointment-Wordpress-Plugin';
     private const API_URL = 'https://api.github.com/repos/' . self::REPO . '/releases/latest';
     private const ZIP_URL = 'https://github.com/' . self::REPO . '/archive/refs/tags/%s.zip';
+
     private const CACHE_KEY = 'csa_github_release';
     private const CACHE_TTL = 43200;
+
     private const PLUGIN_SLUG = 'calendar-service-appointments';
     private const PLUGIN_FILE = 'calendar-service-appointments-form.php';
-    private const DESIRED_FOLDER = 'calendar-service-appointments-form';
-    private const LEGACY_PREFIX = 'Service-Calendar-Appointment-Wordpress-Plugin-';
 
-    public static function init() {
+    /**
+     * This is the folder name we ALWAYS want under wp-content/plugins/
+     */
+    private const DESIRED_FOLDER = 'calendar-service-appointments-form';
+
+    public static function init(): void {
         add_filter('pre_set_site_transient_update_plugins', [self::class, 'check_for_update']);
         add_filter('plugins_api', [self::class, 'plugins_api'], 10, 3);
-        add_filter('upgrader_source_selection', [self::class, 'fix_source_directory'], 10, 4);
-        add_filter('upgrader_post_install', [self::class, 'maybe_rename_after_update'], 10, 3);
+
+        /**
+         * Most reliable way to control the final install directory name.
+         */
+        add_filter('upgrader_package_options', [self::class, 'force_destination_folder'], 10, 1);
+
+        /**
+         * Extra safety: if something still installs into a versioned folder,
+         * normalize it after install.
+         */
+        add_filter('upgrader_post_install', [self::class, 'normalize_folder_after_install'], 10, 3);
     }
 
     public static function check_for_update($transient) {
@@ -39,15 +53,19 @@ class GitHubUpdater {
             return $transient;
         }
 
-        $current = defined('CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION') ? CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION : '0.0.0';
+        $current = defined('CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION')
+            ? CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION
+            : '0.0.0';
+
         if (version_compare($release['version'], $current, '>')) {
-            $plugin_basename = plugin_basename(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE);
+            $plugin_basename = self::plugin_basename();
+
             $transient->response[$plugin_basename] = (object) [
-                'slug' => self::PLUGIN_SLUG,
-                'plugin' => $plugin_basename,
+                'slug'        => self::PLUGIN_SLUG,
+                'plugin'      => $plugin_basename,
                 'new_version' => $release['version'],
-                'url' => $release['html_url'],
-                'package' => $release['zip_url'],
+                'url'         => $release['html_url'],
+                'package'     => $release['zip_url'],
             ];
         }
 
@@ -65,20 +83,20 @@ class GitHubUpdater {
         }
 
         return (object) [
-            'name' => 'Calendar Service Appointments Form',
-            'slug' => self::PLUGIN_SLUG,
-            'version' => $release['version'],
-            'author' => 'Chris Paschall',
-            'homepage' => $release['html_url'],
+            'name'          => 'Calendar Service Appointments Form',
+            'slug'          => self::PLUGIN_SLUG,
+            'version'       => $release['version'],
+            'author'        => 'Chris Paschall',
+            'homepage'      => $release['html_url'],
             'download_link' => $release['zip_url'],
-            'sections' => [
+            'sections'      => [
                 'description' => 'A complete service appointment booking system with calendar interface and Elementor integration.',
             ],
-            'banners' => [],
+            'banners'       => [],
         ];
     }
 
-    private static function get_latest_release() {
+    private static function get_latest_release(): ?array {
         $cached = get_site_transient(self::CACHE_KEY);
         if (is_array($cached)) {
             return $cached;
@@ -87,7 +105,7 @@ class GitHubUpdater {
         $response = wp_remote_get(self::API_URL, [
             'timeout' => 10,
             'headers' => [
-                'Accept' => 'application/vnd.github+json',
+                'Accept'     => 'application/vnd.github+json',
                 'User-Agent' => 'WordPress/Calendar-Service-Appointments',
             ],
         ]);
@@ -103,6 +121,7 @@ class GitHubUpdater {
 
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
+
         if (!is_array($data) || empty($data['tag_name'])) {
             return null;
         }
@@ -111,7 +130,7 @@ class GitHubUpdater {
         $version = ltrim($tag, 'v');
 
         $release = [
-            'tag' => $tag,
+            'tag'     => $tag,
             'version' => $version,
             'zip_url' => sprintf(self::ZIP_URL, rawurlencode($tag)),
             'html_url' => isset($data['html_url']) ? (string) $data['html_url'] : '',
@@ -123,101 +142,78 @@ class GitHubUpdater {
     }
 
     /**
-     * Ensure the extracted folder name matches the installed plugin directory.
-     *
-     * @param string $source
-     * @param string $remote_source
-     * @param object $upgrader
-     * @param array $hook_extra
-     * @return string
+     * Returns the "plugin basename" WordPress expects for update matching.
+     * Example: calendar-service-appointments-form/calendar-service-appointments-form.php
      */
-    public static function fix_source_directory($source, $remote_source, $upgrader, $hook_extra) {
-        if (empty($hook_extra['type']) || $hook_extra['type'] !== 'plugin') {
-            return $source;
-        }
-        if (empty($hook_extra['action']) || $hook_extra['action'] !== 'update') {
-            return $source;
-        }
-        if (empty($hook_extra['plugin'])) {
-            return $source;
-        }
-
-        $plugin_basename = plugin_basename(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE);
-        if ($hook_extra['plugin'] !== $plugin_basename) {
-            return $source;
-        }
-
-        $installed_folder = dirname($hook_extra['plugin']);
-        if ($installed_folder === '.' || $installed_folder === '') {
-            return $source;
-        }
-        if (strpos($installed_folder, self::LEGACY_PREFIX) === 0) {
-            $installed_folder = self::DESIRED_FOLDER;
-        }
-
-        $source = trailingslashit($source);
-        $desired = trailingslashit(trailingslashit(dirname($source)) . $installed_folder);
-        global $wp_filesystem;
-        if (!$wp_filesystem) {
-            require_once ABSPATH . 'wp-admin/includes/file.php';
-            WP_Filesystem();
-        }
-        if (!$wp_filesystem) {
-            return $source;
-        }
-
-        $plugin_root = self::locate_plugin_root($source, $wp_filesystem);
-        if ($plugin_root) {
-            $source = trailingslashit($plugin_root);
-        }
-
-        if ($source === $desired) {
-            return $source;
-        }
-
-        if ($wp_filesystem->is_dir($desired)) {
-            if (!$wp_filesystem->delete($desired, true)) {
-                return $source;
-            }
-        }
-
-        $moved = $wp_filesystem->move($source, $desired, true);
-        return $moved ? $desired : $source;
+    private static function plugin_basename(): string {
+        // This is more stable than building from constants that might be wrong during upgrade.
+        return self::DESIRED_FOLDER . '/' . self::PLUGIN_FILE;
     }
 
     /**
-     * Rename legacy versioned folders to the desired plugin folder after update.
+     * Ensures WordPress installs into:
+     * wp-content/plugins/calendar-service-appointments-form/
      *
-     * @param mixed $response
-     * @param array $hook_extra
-     * @param array $result
-     * @return mixed
+     * This is the most important fix.
      */
-    public static function maybe_rename_after_update($response, $hook_extra, $result) {
+    public static function force_destination_folder(array $options): array {
+        // Only affect plugin updates.
+        if (empty($options['hook_extra']['type']) || $options['hook_extra']['type'] !== 'plugin') {
+            return $options;
+        }
+
+        // Only affect updates (not installs).
+        if (empty($options['hook_extra']['action']) || $options['hook_extra']['action'] !== 'update') {
+            return $options;
+        }
+
+        // Only affect THIS plugin.
+        if (empty($options['hook_extra']['plugin']) || $options['hook_extra']['plugin'] !== self::plugin_basename()) {
+            return $options;
+        }
+
+        // Force destination to wp-content/plugins/
+        $options['destination'] = WP_PLUGIN_DIR;
+
+        // Force the folder name under plugins/
+        $options['destination_name'] = self::DESIRED_FOLDER;
+
+        // Replace existing plugin folder contents cleanly
+        $options['clear_destination'] = true;
+
+        return $options;
+    }
+
+    /**
+     * Safety net: if WordPress still ends up installing under a GitHub-generated folder,
+     * move it back to the desired folder.
+     */
+    public static function normalize_folder_after_install($response, $hook_extra, $result) {
         if (empty($hook_extra['type']) || $hook_extra['type'] !== 'plugin') {
             return $response;
         }
+
         if (empty($hook_extra['action']) || $hook_extra['action'] !== 'update') {
             return $response;
         }
-        if (empty($hook_extra['plugin'])) {
+
+        if (empty($hook_extra['plugin']) || $hook_extra['plugin'] !== self::plugin_basename()) {
             return $response;
         }
 
-        $plugin_basename = plugin_basename(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE);
-        if ($hook_extra['plugin'] !== $plugin_basename) {
+        if (empty($result['destination'])) {
             return $response;
         }
 
-        $current_dir = trailingslashit(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR);
-        $current_basename = basename($current_dir);
-        if ($current_basename === self::DESIRED_FOLDER) {
-            return $response;
-        }
-        if (strpos($current_basename, self::LEGACY_PREFIX) !== 0) {
+        $desired_dir = trailingslashit(WP_PLUGIN_DIR) . self::DESIRED_FOLDER;
+        $installed_dir = rtrim((string) $result['destination'], '/\\');
+
+        // If WP already installed it into the correct folder, nothing to do.
+        if (wp_normalize_path($installed_dir) === wp_normalize_path($desired_dir)) {
             return $response;
         }
 
+        // If for some reason destination is wrong, attempt to move.
         global $wp_filesystem;
         if (!$wp_filesystem) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -227,19 +223,23 @@ class GitHubUpdater {
             return $response;
         }
 
-        $target_dir = trailingslashit(WP_PLUGIN_DIR . '/' . self::DESIRED_FOLDER);
-        if ($wp_filesystem->is_dir($target_dir)) {
-            if (!$wp_filesystem->delete($target_dir, true)) {
-                return $response;
-            }
-        }
-
-        if (!$wp_filesystem->move($current_dir, $target_dir, true)) {
+        // Only move if the installed directory actually contains our plugin file.
+        $installed_plugin_file = trailingslashit($installed_dir) . self::PLUGIN_FILE;
+        if (!$wp_filesystem->exists($installed_plugin_file)) {
             return $response;
         }
 
-        $old_basename = $hook_extra['plugin'];
-        $new_basename = self::DESIRED_FOLDER . '/' . self::PLUGIN_FILE;
+        // Remove existing desired dir if it exists.
+        if ($wp_filesystem->is_dir($desired_dir)) {
+            $wp_filesystem->delete($desired_dir, true);
+        }
+
+        // Move to desired directory.
+        $wp_filesystem->move($installed_dir, $desired_dir, true);
+
+        // Ensure active plugins list is correct.
+        $old_basename = $hook_extra['plugin']; // should already be desired basename
+        $new_basename = self::plugin_basename();
 
         $active_plugins = get_option('active_plugins', []);
         if (is_array($active_plugins)) {
@@ -264,38 +264,5 @@ class GitHubUpdater {
         }
 
         return $response;
-    }
-
-    /**
-     * Find the actual plugin root inside the extracted zip folder.
-     *
-     * @param string $source
-     * @param object $wp_filesystem
-     * @return string|null
-     */
-    private static function locate_plugin_root($source, $wp_filesystem) {
-        $candidate = trailingslashit($source) . self::PLUGIN_FILE;
-        if ($wp_filesystem->exists($candidate)) {
-            return $source;
-        }
-
-        $entries = $wp_filesystem->dirlist($source, false, false);
-        if (!is_array($entries)) {
-            return null;
-        }
-
-        foreach ($entries as $name => $entry) {
-            if (empty($entry['type']) || $entry['type'] !== 'd') {
-                continue;
-            }
-
-            $child = trailingslashit($source) . $name;
-            $child_candidate = trailingslashit($child) . self::PLUGIN_FILE;
-            if ($wp_filesystem->exists($child_candidate)) {
-                return $child;
-            }
-        }
-
-        return null;
     }
 }
