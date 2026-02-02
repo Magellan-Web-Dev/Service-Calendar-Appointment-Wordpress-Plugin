@@ -419,7 +419,7 @@ class Elementor {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('[CSA] validate_appointment_form child booking start date=' . $appointment_date . ' time=' . $normalized_time . ' service=' . $service_title . ' duration=' . $duration_seconds);
             }
-            $availability = $this->check_master_time_available($appointment_date, $normalized_time, $duration_seconds);
+            $availability = $this->check_master_time_available($appointment_date, $normalized_time, $duration_seconds, $username);
             if (is_wp_error($availability)) {
                 if (defined('WP_DEBUG') && WP_DEBUG) {
                     error_log('[CSA] validate_appointment_form master availability failed: ' . $availability->get_error_message());
@@ -1206,10 +1206,11 @@ class Elementor {
      * @param string $date
      * @param string $time
      * @param int $duration_seconds
+     * @param string $username
      * @return bool|\WP_Error
      */
-    private function check_master_time_available($date, $time, $duration_seconds) {
-        $response = Multisite::fetch_master_available_times($date, $duration_seconds);
+    private function check_master_time_available($date, $time, $duration_seconds, $username = '') {
+        $response = Multisite::fetch_master_available_times($date, $duration_seconds, $username);
         if (is_wp_error($response)) {
             return $response;
         }
