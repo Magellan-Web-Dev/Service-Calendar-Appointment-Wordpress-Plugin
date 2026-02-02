@@ -77,8 +77,8 @@ class Plugin {
         register_activation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'activate']);
         register_deactivation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'deactivate']);
 
+        add_action('upgrader_process_complete', [GitHubUpdater::class, 'normalize_plugin_folder']);
         add_action('plugins_loaded', [$this, 'init']);
-        add_action('plugin_loaded', [GitHubUpdater::class, 'normalize_plugin_folder_on_load']);
         add_action('admin_init', [$this, 'maybe_handle_manual_update_check']);
         add_action('admin_notices', [$this, 'manual_update_notice']);
         add_filter('plugin_row_meta', [$this, 'add_check_updates_link'], 10, 2);
