@@ -128,6 +128,35 @@ class UserSelectShortcode {
 
     selectUser(username) {
         if (!username) {
+            this.list.forEach((entry) => {
+                entry.classList.remove('selected');
+                const radio = qs('.csa-user-radio', entry);
+                if (radio) {
+                    radio.checked = false;
+                }
+            });
+            if (this.select) {
+                this.select.value = '';
+            }
+            if (this.hidden) {
+                this.hidden.value = '';
+            }
+            if (this.hiddenForm) {
+                this.hiddenForm.value = '';
+            }
+            if (this.prop) {
+                clearElementorPropValue(this.form, this.prop);
+            }
+            if (this.fieldProp) {
+                clearFieldPropValue(this.fieldProp);
+            }
+            if (this.form) {
+                const event = new CustomEvent('csa:userChanged', {
+                    detail: { username: '' },
+                    bubbles: true,
+                });
+                this.form.dispatchEvent(event);
+            }
             return;
         }
         this.list.forEach((entry) => entry.classList.remove('selected'));
@@ -193,12 +222,18 @@ class ServiceShortcode {
 
         if (this.form) {
             on(this.form, 'csa:userChanged', () => {
+                this.updateDisabledState();
                 this.resetSelection();
             });
         }
+
+        this.updateDisabledState();
     }
 
     selectService(item) {
+        if (!this.updateDisabledState()) {
+            return;
+        }
         const title = item.dataset.title || '';
         const durationSeconds = parseInt(item.dataset.durationSeconds || '0', 10);
 
@@ -248,6 +283,12 @@ class ServiceShortcode {
         if (this.fieldProp) {
             clearFieldPropValue(this.fieldProp);
         }
+    }
+
+    updateDisabledState() {
+        const hasUser = !!getUsernameFromForm(this.container);
+        this.container.classList.toggle('csa-field-disabled', !hasUser);
+        return hasUser;
     }
 }
 
@@ -438,7 +479,8 @@ class TimeShortcode {
             return;
         }
         const durationSeconds = this.getDurationSeconds();
-        const disabled = !durationSeconds;
+        const hasUser = !!getUsernameFromForm(this.container);
+        const disabled = !durationSeconds || !hasUser;
         this.calendarWrapper.classList.toggle('csa-field-disabled', disabled);
     }
 
@@ -446,9 +488,10 @@ class TimeShortcode {
         if (!this.timeNotification) {
             return;
         }
+        const hasUser = !!getUsernameFromForm(this.container);
         const hasService = this.getDurationSeconds() > 0;
         const hasDate = !!this.selectedDate;
-        const active = hasService && !hasDate;
+        const active = hasUser && hasService && !hasDate;
         this.timeNotification.classList.toggle('csa-time-notification-active', active);
     }
 
@@ -494,6 +537,15 @@ class TimeShortcode {
 
     async loadAvailableDays() {
         const durationSeconds = this.getDurationSeconds();
+        const hasUser = !!getUsernameFromForm(this.container);
+        if (!hasUser) {
+            this.availableDays = new Set();
+            this.renderCalendar();
+            this.updateTimeSelectState('Select a user first', true);
+            this.updateCalendarDisabledState();
+            this.updateTimeNotificationState();
+            return;
+        }
         if (!durationSeconds) {
             this.availableDays = new Set();
             this.renderCalendar();
