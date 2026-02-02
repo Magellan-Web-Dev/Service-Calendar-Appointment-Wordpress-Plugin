@@ -266,7 +266,7 @@ class GitHubUpdater {
         return $response;
     }
 
-    public static function normalize_plugin_folder_on_load(): void {
+    public static function normalize_plugin_folder(): void {
         $desired_folder = self::DESIRED_FOLDER;
         $plugin_file = self::PLUGIN_FILE;
 
