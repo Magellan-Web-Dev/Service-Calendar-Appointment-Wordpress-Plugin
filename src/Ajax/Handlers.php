@@ -106,15 +106,26 @@ class Handlers {
                 wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
             }
 
-            if (!current_user_can(self::CAPABILITY)) {
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[CSA] get_day_details unauthorized.');
-                }
-                wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
-            }
-
             $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
             $user_id = $this->resolve_request_user_id(true);
+            $current_user_id = get_current_user_id();
+            $is_admin = current_user_can(self::CAPABILITY);
+            $is_enabled_user = $current_user_id ? Access::is_user_enabled($current_user_id) : false;
+
+            if (!$is_admin) {
+                if (!$is_enabled_user || (!$user_id || (int) $user_id !== (int) $current_user_id)) {
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log(sprintf(
+                            '[CSA] get_day_details unauthorized. current_user=%d resolved_user=%s enabled=%s date=%s',
+                            (int) $current_user_id,
+                            $user_id === null ? 'null' : (string) $user_id,
+                            $is_enabled_user ? 'yes' : 'no',
+                            $date
+                        ));
+                    }
+                    wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
+                }
+            }
 
             $payload = $this->build_day_details_payload($date, $user_id);
             if (is_wp_error($payload)) {
