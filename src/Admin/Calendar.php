@@ -336,6 +336,7 @@ class Calendar {
         $services = [];
         $posted = isset($_POST['services']) && is_array($_POST['services']) ? $_POST['services'] : [];
         $duration_options = $this->get_service_duration_options();
+        $used_slugs = [];
 
         foreach ($posted as $service) {
             if (!is_array($service)) {
@@ -365,11 +366,29 @@ class Calendar {
                 continue;
             }
 
+            $slug = '';
+            if (!empty($service['slug']) && is_string($service['slug'])) {
+                $slug = sanitize_title($service['slug']);
+            }
+            if ($slug === '' && $title !== '') {
+                $slug = sanitize_title($title);
+            }
+            if ($slug !== '') {
+                $base_slug = $slug;
+                $suffix = 2;
+                while (in_array($slug, $used_slugs, true)) {
+                    $slug = $base_slug . '-' . $suffix;
+                    $suffix++;
+                }
+                $used_slugs[] = $slug;
+            }
+
             $services[] = [
                 'title' => $title,
                 'sub_heading' => $sub_heading,
                 'duration' => $duration,
                 'description' => $description,
+                'slug' => $slug,
             ];
         }
 

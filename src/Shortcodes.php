@@ -81,13 +81,14 @@ class Shortcodes {
      * @return string
      */
     public static function render_appointment_field($atts = []) {
-        // Accept attributes: type (services|time), label (string), elementor_prop (hidden field id), field_prop (target field id)
+        // Accept attributes: type (service_select|service|time|user|user_select), label (string), elementor_prop (hidden field id), field_prop (target field id)
         $atts = shortcode_atts([
             'type' => 'time',
             'label' => '',
             'elementor_prop' => '',
             'field_prop' => '',
             'user' => '',
+            'service' => '',
         ], $atts, self::SHORTCODE_TAG);
 
         $type = sanitize_text_field($atts['type']);
@@ -95,7 +96,12 @@ class Shortcodes {
         $elementor_prop = sanitize_text_field($atts['elementor_prop']);
         $field_prop = sanitize_text_field($atts['field_prop']);
         $username = sanitize_text_field($atts['user']);
-        if (!in_array($type, ['services', 'time', 'user', 'user_select'], true)) {
+        $service_slug = sanitize_title($atts['service']);
+
+        if ($type === 'services') {
+            $type = 'service_select';
+        }
+        if (!in_array($type, ['service_select', 'service', 'time', 'user', 'user_select'], true)) {
             $type = 'time';
         }
         if ($type === 'user') {
@@ -108,40 +114,23 @@ class Shortcodes {
         }
 
         $services = [];
+        $service = [];
         $users = [];
-        if ($type === 'services') {
-            if (Multisite::is_child()) {
-                $stored = Multisite::fetch_master_services();
-            } else {
-                $db = Database::get_instance();
-                $stored = $db->get_services();
-            }
-            $labels = self::get_service_duration_labels();
-            foreach ($stored as $service) {
-                if (!is_array($service)) {
-                    continue;
+        if ($type === 'service_select' || $type === 'service') {
+            $services = self::get_services_for_shortcode();
+            if ($type === 'service') {
+                if ($service_slug === '') {
+                    return '<div class="csa-appointment-error">' . esc_html__('A valid service attribute (slug) is required for this shortcode.', self::TEXT_DOMAIN) . '</div>';
                 }
-                $title = isset($service['title']) ? sanitize_text_field($service['title']) : '';
-                if ($title === '') {
-                    continue;
+                foreach ($services as $entry) {
+                    if (!empty($entry['slug']) && $entry['slug'] === $service_slug) {
+                        $service = $entry;
+                        break;
+                    }
                 }
-                $sub_heading = isset($service['sub_heading']) ? sanitize_text_field($service['sub_heading']) : '';
-                $description = isset($service['description']) ? sanitize_textarea_field($service['description']) : '';
-                $duration_raw = isset($service['duration']) ? (string) $service['duration'] : '';
-                $duration_seconds = ctype_digit($duration_raw) ? (int) $duration_raw : 0;
-                $duration_label = '';
-                if ($duration_seconds > 0 && isset($labels[$duration_raw])) {
-                    $duration_label = $labels[$duration_raw];
-                } elseif ($duration_raw !== '') {
-                    $duration_label = $duration_raw;
+                if (empty($service)) {
+                    return '<div class="csa-appointment-error">' . esc_html__('The specified service slug does not match any configured services.', self::TEXT_DOMAIN) . '</div>';
                 }
-                $services[] = [
-                    'title' => $title,
-                    'sub_heading' => $sub_heading,
-                    'description' => $description,
-                    'duration_seconds' => $duration_seconds,
-                    'duration_label' => $duration_label,
-                ];
             }
         }
 
@@ -181,9 +170,64 @@ class Shortcodes {
             'elementor_prop' => $elementor_prop,
             'field_prop' => $field_prop,
             'services' => $services,
+            'service' => $service,
             'user' => $username,
             'users' => $users,
         ]);
+    }
+
+    /**
+     * Fetch services for shortcode rendering.
+     *
+     * @return array
+     */
+    private static function get_services_for_shortcode() {
+        if (Multisite::is_child()) {
+            $stored = Multisite::fetch_master_services();
+        } else {
+            $db = Database::get_instance();
+            $stored = $db->get_services();
+        }
+        $labels = self::get_service_duration_labels();
+        $services = [];
+
+        foreach ($stored as $service) {
+            if (!is_array($service)) {
+                continue;
+            }
+            $title = isset($service['title']) ? sanitize_text_field($service['title']) : '';
+            if ($title === '') {
+                continue;
+            }
+            $sub_heading = isset($service['sub_heading']) ? sanitize_text_field($service['sub_heading']) : '';
+            $description = isset($service['description']) ? sanitize_textarea_field($service['description']) : '';
+            $duration_raw = isset($service['duration']) ? (string) $service['duration'] : '';
+            $duration_seconds = ctype_digit($duration_raw) ? (int) $duration_raw : 0;
+            $duration_label = '';
+            if ($duration_seconds > 0 && isset($labels[$duration_raw])) {
+                $duration_label = $labels[$duration_raw];
+            } elseif ($duration_raw !== '') {
+                $duration_label = $duration_raw;
+            }
+            $slug = '';
+            if (!empty($service['slug'])) {
+                $slug = sanitize_title($service['slug']);
+            }
+            if ($slug === '') {
+                $slug = sanitize_title($title);
+            }
+
+            $services[] = [
+                'title' => $title,
+                'slug' => $slug,
+                'sub_heading' => $sub_heading,
+                'description' => $description,
+                'duration_seconds' => $duration_seconds,
+                'duration_label' => $duration_label,
+            ];
+        }
+
+        return $services;
     }
 
     /**

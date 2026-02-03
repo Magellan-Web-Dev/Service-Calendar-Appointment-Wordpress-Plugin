@@ -52,6 +52,13 @@ class ServicesPage {
                         $sub_heading = isset($service['sub_heading']) ? $service['sub_heading'] : '';
                         $duration = isset($service['duration']) ? $service['duration'] : '';
                         $description = isset($service['description']) ? $service['description'] : '';
+                        $slug = '';
+                        if (!empty($service['slug'])) {
+                            $slug = sanitize_title($service['slug']);
+                        }
+                        if ($slug === '' && $title !== '') {
+                            $slug = sanitize_title($title);
+                        }
                         ?>
                         <div class="csa-service-item">
                             <div class="csa-service-item-header">
@@ -84,6 +91,12 @@ class ServicesPage {
                             <p>
                                 <label for="csa-service-description-<?php echo esc_attr($index); ?>"><strong><?php esc_html_e('Description', $text_domain); ?></strong></label><br />
                                 <textarea class="large-text" rows="4" id="csa-service-description-<?php echo esc_attr($index); ?>" name="services[<?php echo esc_attr($index); ?>][description]"><?php echo esc_textarea($description); ?></textarea>
+                            </p>
+
+                            <p>
+                                <label for="csa-service-slug-<?php echo esc_attr($index); ?>"><strong><?php esc_html_e('Slug (use in shortcode)', $text_domain); ?></strong></label><br />
+                                <input class="regular-text code" type="text" id="csa-service-slug-<?php echo esc_attr($index); ?>" value="<?php echo esc_attr($slug); ?>" readonly />
+                                <span class="description"><?php esc_html_e('Use with type="service" service="your-slug". Slug updates after saving.', $text_domain); ?></span>
                             </p>
                         </div>
                     <?php endforeach; ?>
@@ -128,6 +141,12 @@ class ServicesPage {
                     <p>
                         <label for="csa-service-description-__INDEX__"><strong><?php esc_html_e('Description', $text_domain); ?></strong></label><br />
                         <textarea class="large-text" rows="4" id="csa-service-description-__INDEX__" name="services[__INDEX__][description]"></textarea>
+                    </p>
+
+                    <p>
+                        <label for="csa-service-slug-__INDEX__"><strong><?php esc_html_e('Slug (use in shortcode)', $text_domain); ?></strong></label><br />
+                        <input class="regular-text code" type="text" id="csa-service-slug-__INDEX__" value="" placeholder="<?php esc_attr_e('Generated after save', $text_domain); ?>" readonly />
+                        <span class="description"><?php esc_html_e('Use with type="service" service="your-slug". Slug updates after saving.', $text_domain); ?></span>
                     </p>
                 </div>
             </template>

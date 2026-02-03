@@ -73,7 +73,7 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
         echo '<div class="csa-elementor-appointment">';
         echo AppointmentField::render([
             'text_domain' => self::TEXT_DOMAIN,
-            'type' => 'services',
+            'type' => 'service_select',
             'label' => $label !== '' ? $label : self::LABEL,
             'elementor_prop' => '',
             'services' => $services,
@@ -116,7 +116,7 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
     public function content_template() {
         ?>
         <div class="csa-elementor-appointment">
-            <div class="csa-appointment-field" data-type="services">
+            <div class="csa-appointment-field" data-type="service_select">
                 <div class="csa-appointment-main-label"><?php echo esc_html__(self::LABEL, self::TEXT_DOMAIN); ?></div>
                 <div class="csa-appointment-services">
                     <ul class="csa-service-list">

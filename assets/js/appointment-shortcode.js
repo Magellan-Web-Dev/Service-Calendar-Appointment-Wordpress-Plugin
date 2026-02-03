@@ -292,6 +292,41 @@ class ServiceShortcode {
     }
 }
 
+class ServiceFixedShortcode {
+    constructor(container) {
+        this.container = container;
+        this.form = container.closest('form');
+        this.prop = container.dataset.elementorProp || '';
+        this.fieldProp = container.dataset.fieldProp || '';
+        this.title = container.dataset.serviceTitle || '';
+        const rawDuration = parseInt(container.dataset.serviceDuration || '0', 10);
+        this.durationSeconds = Number.isFinite(rawDuration) ? rawDuration : 0;
+    }
+
+    init() {
+        if (!this.title) {
+            return;
+        }
+
+        if (this.form) {
+            this.form.dataset.csaServiceDuration = String(this.durationSeconds);
+            this.form.dataset.csaServiceTitle = this.title;
+            const event = new CustomEvent('csa:serviceChanged', {
+                detail: { durationSeconds: this.durationSeconds, title: this.title },
+                bubbles: true,
+            });
+            this.form.dispatchEvent(event);
+        }
+
+        if (this.prop) {
+            setElementorPropValue(this.form, this.prop, formatPropValue('service', this.title));
+        }
+        if (this.fieldProp) {
+            setFieldPropValue(this.fieldProp, formatPropValue('service', this.title));
+        }
+    }
+}
+
 class TimeShortcode {
     constructor(container, config) {
         this.container = container;
@@ -787,8 +822,11 @@ const appointmentConfig = window.csaAppointment || null;
 if (appointmentConfig) {
     qsa('.csa-appointment-field').forEach((container) => {
         const type = container.dataset.type || 'time';
-        if (type === 'services') {
+        if (type === 'service_select' || type === 'services') {
             const instance = new ServiceShortcode(container);
+            instance.init();
+        } else if (type === 'service') {
+            const instance = new ServiceFixedShortcode(container);
             instance.init();
         } else if (type === 'user_select') {
             const instance = new UserSelectShortcode(container);

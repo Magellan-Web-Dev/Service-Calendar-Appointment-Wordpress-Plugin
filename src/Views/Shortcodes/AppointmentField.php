@@ -26,10 +26,11 @@ class AppointmentField {
         $elementor_prop = isset($context['elementor_prop']) ? $context['elementor_prop'] : '';
         $field_prop = isset($context['field_prop']) ? $context['field_prop'] : '';
         $services = isset($context['services']) && is_array($context['services']) ? $context['services'] : [];
+        $service = isset($context['service']) && is_array($context['service']) ? $context['service'] : [];
         $username = isset($context['user']) ? $context['user'] : '';
         $users = isset($context['users']) && is_array($context['users']) ? $context['users'] : [];
 
-        $hidden_style = $type === 'user' ? ' style="display:none;"' : '';
+        $hidden_style = in_array($type, ['user', 'service'], true) ? ' style="display:none;"' : '';
         $html = '<div class="csa-appointment-field" data-type="' . esc_attr($type) . '"' . $hidden_style;
         if (!empty($elementor_prop)) {
             $html .= ' data-elementor-prop="' . esc_attr($elementor_prop) . '"';
@@ -43,9 +44,19 @@ class AppointmentField {
         if (!empty($username)) {
             $html .= ' data-user="' . esc_attr($username) . '"';
         }
+        if ($type === 'service' && !empty($service)) {
+            $service_title = isset($service['title']) ? $service['title'] : '';
+            $service_slug = isset($service['slug']) ? $service['slug'] : '';
+            $service_duration = isset($service['duration_seconds']) ? (int) $service['duration_seconds'] : 0;
+            if ($service_title !== '') {
+                $html .= ' data-service-title="' . esc_attr($service_title) . '"';
+                $html .= ' data-service-slug="' . esc_attr($service_slug) . '"';
+                $html .= ' data-service-duration="' . esc_attr((string) $service_duration) . '"';
+            }
+        }
         $html .= '>';
 
-        if (!empty($label) && $type !== 'user') {
+        if (!empty($label) && !in_array($type, ['user', 'service'], true)) {
             $html .= '<div class="csa-appointment-main-label">' . esc_html($label) . '</div>';
         }
 
@@ -63,7 +74,21 @@ class AppointmentField {
             return $html;
         }
 
-        if ($type === 'services') {
+        if ($type === 'service') {
+            $service_title = isset($service['title']) ? $service['title'] : '';
+            if ($service_title !== '') {
+                $html .= '<input type="hidden" name="appointment_service" value="' . esc_attr($service_title) . '" />';
+                $html .= '<input type="hidden" name="form_fields[appointment_service]" value="' . esc_attr($service_title) . '" />';
+            }
+            if (!empty($elementor_prop)) {
+                $prop_key = 'csa-field-' . $elementor_prop;
+                $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-elementor-prop-hidden" value="" />';
+            }
+            $html .= '</div>';
+            return $html;
+        }
+
+        if ($type === 'service_select' || $type === 'services') {
             $html .= '<div class="csa-appointment-services">';
             $html .= '<ul class="csa-service-list">';
             foreach ($services as $index => $service) {
