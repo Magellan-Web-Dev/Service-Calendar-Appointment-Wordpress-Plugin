@@ -40,6 +40,9 @@ export class AdminCalendar {
             date: '',
             time: '',
         };
+        this.mobileMonthSelect = qs('#csa-mobile-month');
+        this.mobileDaySelect = qs('#csa-mobile-day');
+        this.mobileMonthTouched = false;
     }
 
     /**
@@ -66,6 +69,7 @@ export class AdminCalendar {
         this.bindTimezoneSelector();
         this.bindRescheduleControls();
         this.bindCustomAppointments();
+        this.bindMobilePicker();
 
         this.updateNavButtons();
         this.renderWeeklyAvailability();
@@ -132,6 +136,97 @@ export class AdminCalendar {
                 this.loadCalendar(this.currentMonth, this.currentYear);
             });
         }
+    }
+
+    /**
+     * Bind mobile month/day picker controls.
+     *
+     * @returns {void}
+     */
+    bindMobilePicker() {
+        if (!this.mobileMonthSelect || !this.mobileDaySelect) {
+            return;
+        }
+
+        const currentValue = this.currentYear && this.currentMonth
+            ? `${this.currentYear}-${String(this.currentMonth).padStart(2, '0')}`
+            : '';
+
+        const resetDayOptions = () => {
+            this.mobileDaySelect.innerHTML = '<option value="">Select day</option>';
+            this.mobileDaySelect.disabled = true;
+        };
+
+        const buildDayOptions = () => {
+            resetDayOptions();
+            const cells = qsa('.csa-calendar-day:not(.empty):not(.holiday-closed)');
+            if (!cells.length) {
+                return;
+            }
+            cells.forEach((cell) => {
+                const date = cell.dataset.date;
+                if (!date) {
+                    return;
+                }
+                const option = document.createElement('option');
+                option.value = date;
+                const parsed = new Date(`${date}T00:00:00`);
+                if (Number.isNaN(parsed.getTime())) {
+                    option.textContent = date;
+                } else {
+                    option.textContent = parsed.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                    });
+                }
+                this.mobileDaySelect.appendChild(option);
+            });
+            this.mobileDaySelect.disabled = false;
+        };
+
+        resetDayOptions();
+
+        const storedMonth = window.sessionStorage ? window.sessionStorage.getItem('csaAdminMobileMonth') : '';
+        if (storedMonth && storedMonth === currentValue) {
+            this.mobileMonthSelect.value = storedMonth;
+            this.mobileMonthTouched = true;
+            buildDayOptions();
+        } else if (storedMonth && storedMonth !== currentValue && window.sessionStorage) {
+            window.sessionStorage.removeItem('csaAdminMobileMonth');
+        }
+
+        on(this.mobileMonthSelect, 'change', () => {
+            const value = this.mobileMonthSelect.value;
+            this.mobileMonthTouched = true;
+            if (window.sessionStorage) {
+                if (value) {
+                    window.sessionStorage.setItem('csaAdminMobileMonth', value);
+                } else {
+                    window.sessionStorage.removeItem('csaAdminMobileMonth');
+                }
+            }
+            if (!value) {
+                resetDayOptions();
+                return;
+            }
+            if (value !== currentValue) {
+                const [year, month] = value.split('-').map((part) => parseInt(part, 10));
+                if (Number.isFinite(year) && Number.isFinite(month)) {
+                    this.loadCalendar(month, year);
+                }
+                return;
+            }
+            buildDayOptions();
+        });
+
+        on(this.mobileDaySelect, 'change', () => {
+            const value = this.mobileDaySelect.value;
+            if (!value) {
+                return;
+            }
+            this.showDayDetails(value);
+        });
     }
 
     /**

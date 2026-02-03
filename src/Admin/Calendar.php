@@ -183,6 +183,31 @@ class Calendar {
         if (Multisite::is_child()) {
             return;
         }
+
+        $plugin_pages = [
+            self::MENU_SLUG,
+            self::SERVICES_MENU_SLUG,
+            self::USERS_MENU_SLUG,
+            self::SHORTCODES_MENU_SLUG,
+            self::OVERVIEW_MENU_SLUG,
+        ];
+        $is_plugin_page = false;
+        if (is_string($hook)) {
+            foreach ($plugin_pages as $slug) {
+                if (strpos($hook, $slug) !== false) {
+                    $is_plugin_page = true;
+                    break;
+                }
+            }
+        }
+        if (!$is_plugin_page && isset($_GET['page'])) {
+            $page = (string) $_GET['page'];
+            $is_plugin_page = in_array($page, $plugin_pages, true);
+        }
+        if ($is_plugin_page) {
+            wp_enqueue_style('csa-admin-shared', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/admin-shared.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
+        }
+
         $calendar_hooks = [
             'toplevel_page_' . self::MENU_SLUG,
             self::MENU_SLUG . '_page_' . self::MENU_SLUG,

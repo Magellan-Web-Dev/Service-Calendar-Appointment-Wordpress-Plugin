@@ -184,6 +184,7 @@ body::after {
     justify-content: space-between;
     align-items: center;
     padding: 20px;
+    gap: 32px;
     border-bottom: 1px solid #ddd;
 }
 
@@ -194,7 +195,9 @@ body::after {
 
 .csa-modal-header h3 {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: min(1.25rem, 4.875vw);
+    white-space: nowrap;
+    line-height: 1.25em;
 }
 
 .csa-modal-timezone {
@@ -307,7 +310,35 @@ body::after {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 40px;
+    column-gap: 40px;
+    row-gap: 16px;
+}
+
+.csa-mobile-picker {
+    display: none;
+    margin: 12px 0 16px;
+    padding: 12px;
+    border: 1px solid #ccd0d4;
+    border-radius: 6px;
+    background: #f6f7f7;
+}
+
+.csa-mobile-picker-field {
+    display: grid;
+    gap: 6px;
+}
+
+.csa-mobile-picker-field + .csa-mobile-picker-field {
+    margin-top: 12px;
+}
+
+.csa-mobile-picker label {
+    font-weight: 600;
+}
+
+.csa-mobile-picker select {
+    width: 100%;
+    max-width: 100%;
 }
 
 @media (max-width: 640px) {
@@ -374,7 +405,7 @@ body::after {
     font-size: 0.75rem;
     font-weight: 500;
     text-transform: uppercase;
-    margin: 0.5em 0 0.75em;
+    margin: 0.5em 0 1.25em;
 }
 
 .csa-time-slot-status.pending {
@@ -575,7 +606,12 @@ h2 {
 
 .csa-day-controls {
     padding-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
     border-bottom: 1px solid #ddd;
+    width: fit-content;
+    column-gap: 24px;
+    row-gap: 12px;
 }
 
 html:has([id="csa-day-detail-modal"][style="display: block;"]) {
@@ -618,4 +654,33 @@ html:has([id="csa-custom-appointment-modal"][style="display: block;"]) {
 
 .csa-btn.csa-btn-reschedule-slot:hover {
     background: #256528;
+}
+
+@media(min-width: 680px) and (max-width: 780px) {
+    .widefat tfoot td input[type=checkbox]:before, .widefat th input[type=checkbox]:before, .widefat thead td input[type=checkbox]:before, input[type=checkbox]:checked:before {
+        width: 1.675rem;
+        height: 1.675rem;
+        margin: -.2575rem -.4125rem;
+    }
+}
+
+@media (max-width: 1079px) {
+    .csa-calendar-header,
+    #csa-calendar-container {
+        display: none;
+    }
+
+    .csa-mobile-picker {
+        display: block;
+    }
+
+    .csa-day-controls {
+        flex-wrap: wrap;
+        width: 100%;
+        justify-content: space-around;
+    }
+
+    .csa-day-controls  * {
+        flex: 1 1 180px;
+    }
 }

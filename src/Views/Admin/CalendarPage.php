@@ -35,6 +35,19 @@ class CalendarPage {
         $selected_user_id = isset($context['selected_user_id']) ? intval($context['selected_user_id']) : 0;
         $is_admin = !empty($context['is_admin']);
         $shortcodes_url = isset($context['shortcodes_url']) ? $context['shortcodes_url'] : '';
+        $min_date = new \DateTime('now', new \DateTimeZone($timezone));
+        $min_date->modify('-3 months');
+        $max_date = new \DateTime('now', new \DateTimeZone($timezone));
+        $max_date->modify('+12 months');
+        $cursor = (clone $min_date)->modify('first day of this month');
+        $month_year_options = [];
+        while ($cursor <= $max_date) {
+            $month_year_options[] = [
+                'value' => $cursor->format('Y-m'),
+                'label' => $cursor->format('F Y'),
+            ];
+            $cursor->modify('+1 month');
+        }
 
         ?>
         <div class="wrap">
@@ -73,6 +86,25 @@ class CalendarPage {
                 <div id="csa-reschedule-banner" class="csa-reschedule-banner" style="display:none;">
                     <span><?php esc_html_e('Select date to reassign appointment', $text_domain); ?></span>
                     <button class="button button-secondary" id="csa-reschedule-cancel"><?php esc_html_e('Cancel Reschedule', $text_domain); ?></button>
+                </div>
+                <div class="csa-mobile-picker">
+                    <div class="csa-mobile-picker-field">
+                        <label for="csa-mobile-month"><?php esc_html_e('Month / Year', $text_domain); ?></label>
+                        <select id="csa-mobile-month">
+                            <option value=""><?php esc_html_e('Select month/year', $text_domain); ?></option>
+                            <?php foreach ($month_year_options as $option) : ?>
+                                <option value="<?php echo esc_attr($option['value']); ?>">
+                                    <?php echo esc_html($option['label']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="csa-mobile-picker-field">
+                        <label for="csa-mobile-day"><?php esc_html_e('Day', $text_domain); ?></label>
+                        <select id="csa-mobile-day" disabled>
+                            <option value=""><?php esc_html_e('Select day', $text_domain); ?></option>
+                        </select>
+                    </div>
                 </div>
                 <div class="csa-calendar-header">
                     <button class="button" id="csa-prev-month">&larr; <?php esc_html_e('Previous', $text_domain); ?></button>

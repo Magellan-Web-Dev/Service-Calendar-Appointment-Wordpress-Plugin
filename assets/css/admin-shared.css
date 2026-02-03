@@ -1,0 +1,50 @@
+body.wp-admin .wrap {
+    word-break: normal;
+}
+
+@media (max-width: 782px) {
+    .csa-calendar-wrapper {
+        padding: 12px;
+    }
+
+    .csa-calendar-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    #csa-calendar-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .csa-calendar {
+        min-width: 640px;
+    }
+
+    .csa-calendar thead th,
+    .csa-calendar-day {
+        padding: 8px;
+    }
+
+    .csa-calendar-day {
+        height: auto;
+        min-height: 80px;
+    }
+
+    .csa-calendar-day .day-number {
+        font-size: 0.95rem;
+    }
+
+    .csa-calendar-day .day-info {
+        font-size: 0.7rem;
+    }
+
+    .csa-shortcodes-page table.widefat {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
