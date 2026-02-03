@@ -148,9 +148,11 @@ export class AdminCalendar {
             return;
         }
 
-        const currentValue = this.currentYear && this.currentMonth
-            ? `${this.currentYear}-${String(this.currentMonth).padStart(2, '0')}`
-            : '';
+        const getCurrentValue = () => (
+            this.currentYear && this.currentMonth
+                ? `${this.currentYear}-${String(this.currentMonth).padStart(2, '0')}`
+                : ''
+        );
 
         const resetDayOptions = () => {
             this.mobileDaySelect.innerHTML = '<option value="">Select day</option>';
@@ -188,15 +190,15 @@ export class AdminCalendar {
         resetDayOptions();
 
         const storedMonth = window.sessionStorage ? window.sessionStorage.getItem('csaAdminMobileMonth') : '';
-        if (storedMonth && storedMonth === currentValue) {
+        if (storedMonth && storedMonth === getCurrentValue()) {
             this.mobileMonthSelect.value = storedMonth;
             this.mobileMonthTouched = true;
             buildDayOptions();
-        } else if (storedMonth && storedMonth !== currentValue && window.sessionStorage) {
+        } else if (storedMonth && storedMonth !== getCurrentValue() && window.sessionStorage) {
             window.sessionStorage.removeItem('csaAdminMobileMonth');
         }
 
-        on(this.mobileMonthSelect, 'change', () => {
+        on(this.mobileMonthSelect, 'change', async () => {
             const value = this.mobileMonthSelect.value;
             this.mobileMonthTouched = true;
             if (window.sessionStorage) {
@@ -210,10 +212,10 @@ export class AdminCalendar {
                 resetDayOptions();
                 return;
             }
-            if (value !== currentValue) {
+            if (value !== getCurrentValue()) {
                 const [year, month] = value.split('-').map((part) => parseInt(part, 10));
                 if (Number.isFinite(year) && Number.isFinite(month)) {
-                    this.loadCalendar(month, year);
+                    await this.loadCalendarAsync(month, year);
                 }
                 return;
             }
@@ -740,6 +742,83 @@ export class AdminCalendar {
             url.searchParams.set('user_id', this.config.selected_user_id);
         }
         window.location.href = url.toString();
+    }
+
+    /**
+     * Navigate to a calendar month/year without reloading the page.
+     *
+     * @param {number} month
+     * @param {number} year
+     * @returns {Promise<void>}
+     */
+    async loadCalendarAsync(month, year) {
+        if (this.isBeforeMin(month, year)) {
+            window.alert('Cannot navigate to dates older than 3 months.');
+            return;
+        }
+
+        const url = new URL(window.location.href);
+        url.searchParams.set('month', month);
+        url.searchParams.set('year', year);
+        if (this.config && this.config.is_admin && this.config.selected_user_id) {
+            url.searchParams.set('user_id', this.config.selected_user_id);
+        }
+
+        document.dispatchEvent(new Event('csa:ajaxStart'));
+        try {
+            const response = await fetch(url.toString(), { credentials: 'same-origin' });
+            if (!response.ok) {
+                throw new Error('Failed to load calendar');
+            }
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const newContainer = doc.querySelector('#csa-calendar-container');
+            const newHeader = doc.querySelector('#csa-current-month');
+            const container = qs('#csa-calendar-container');
+            const header = qs('#csa-current-month');
+
+            if (container && newContainer) {
+                container.innerHTML = newContainer.innerHTML;
+            }
+            if (header && newHeader) {
+                header.textContent = newHeader.textContent || '';
+            }
+
+            this.calendar = qs('.csa-calendar');
+            this.currentMonth = this.calendar ? parseInt(this.calendar.dataset.month, 10) : month;
+            this.currentYear = this.calendar ? parseInt(this.calendar.dataset.year, 10) : year;
+
+            this.updateNavButtons();
+
+            if (this.mobileMonthSelect && this.mobileDaySelect) {
+                const cells = qsa('.csa-calendar-day:not(.empty):not(.holiday-closed)');
+                this.mobileDaySelect.innerHTML = '<option value="">Select day</option>';
+                cells.forEach((cell) => {
+                    const date = cell.dataset.date;
+                    if (!date) {
+                        return;
+                    }
+                    const option = document.createElement('option');
+                    option.value = date;
+                    const parsed = new Date(`${date}T00:00:00`);
+                    if (Number.isNaN(parsed.getTime())) {
+                        option.textContent = date;
+                    } else {
+                        option.textContent = parsed.toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                        });
+                    }
+                    this.mobileDaySelect.appendChild(option);
+                });
+                this.mobileDaySelect.disabled = cells.length === 0;
+            }
+        } catch (error) {
+            window.alert('Error loading calendar');
+        } finally {
+            document.dispatchEvent(new Event('csa:ajaxComplete'));
+        }
     }
 
     /**
