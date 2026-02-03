@@ -34,12 +34,16 @@ class CalendarPage {
         $users = isset($context['users']) && is_array($context['users']) ? $context['users'] : [];
         $selected_user_id = isset($context['selected_user_id']) ? intval($context['selected_user_id']) : 0;
         $is_admin = !empty($context['is_admin']);
+        $shortcodes_url = isset($context['shortcodes_url']) ? $context['shortcodes_url'] : '';
 
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__($label, $text_domain); ?></h1>
-            <div class="notice notice-info inline"><p style="font-weight: 600"><?php esc_html_e('Note: Appointments older than 3 months are automatically deleted daily by the system.', $text_domain); ?></p></div>
-            <p style="width: min(120ch, 100%);"><?php esc_html_e('To add appointment fields on the frontend, use the shortcode [csa_appointment_field] inside an HTML/Raw HTML field or any content area that supports shortcodes. Use attributes type="service_select" for service listings, type="service" with service="your-slug" to preselect a service, or type="time" for calendar and time slots. An attribute of "user" or "user_select" is required to target a specific user. Use elementor_prop="field_id" for Elementor Pro form field syncing, or field_prop="field_id" to target a specific field by ID.', $text_domain); ?></p>
+            <div class="notice notice-info inline"><p style="font-weight: 600"><?php esc_html_e('Note: Appointments older than 3 months (based on appointment date/time) are automatically deleted daily by the system.', $text_domain); ?></p></div>
+            <p style="width: min(120ch, 100%);">
+                <?php esc_html_e('For more information on how to setup servie appointments on a frontend form,', $text_domain); ?>
+                <a href="<?php echo esc_url($shortcodes_url); ?>"><?php esc_html_e('click here', $text_domain); ?></a>.
+            </p>
 
             <div class="csa-calendar-wrapper">
                 <?php if ($is_admin && !empty($users)) : ?>

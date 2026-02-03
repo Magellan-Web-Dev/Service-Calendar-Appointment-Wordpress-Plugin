@@ -22,7 +22,7 @@ Shortcodes (frontend)
 Use `[csa_appointment_field]` in a page, template, or HTML/Raw HTML block.
 
 Required flow for user‑select bookings:
-1) user_select → 2) services → 3) calendar/time
+1) user_select → 2) service_select → 3) calendar/time
 
 Shortcode types
 - `type="user"`:
@@ -33,9 +33,13 @@ Shortcode types
   - Renders a user list + select dropdown that stay in sync.
   - Populates hidden user fields for booking and Elementor syncing.
   - Example: `[csa_appointment_field type="user_select"]`
-- `type="services"`:
+- `type="service_select"`:
   - Service list with duration labels and descriptions.
-  - Example: `[csa_appointment_field type="services"]`
+  - Example: `[csa_appointment_field type="service_select"]`
+- `type="service"`:
+  - Preselects a specific service by slug and shows its details.
+  - Example: `[csa_appointment_field type="service" service="your-service-slug"]`
+- Legacy: `type="services"` is still accepted and maps to `service_select`.
 - `type="time"`:
   - Calendar + time slots (list + select).
   - Example: `[csa_appointment_field type="time"]`
@@ -44,7 +48,7 @@ Elementor Pro syncing (optional)
 - Add `elementor_prop="field_id"` to any shortcode.
 - The plugin writes to hidden inputs named `csa-field-{id}` and `form_fields[{id}]`.
 - Example:
-  - `[csa_appointment_field type="services" elementor_prop="service_field_id"]`
+  - `[csa_appointment_field type="service_select" elementor_prop="service_field_id"]`
   - `[csa_appointment_field type="time" elementor_prop="appointment_field_id"]`
 
 Frontend validation behavior

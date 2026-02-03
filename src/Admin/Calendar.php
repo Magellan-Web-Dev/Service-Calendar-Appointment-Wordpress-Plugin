@@ -13,7 +13,9 @@ use CalendarServiceAppointmentsForm\Core\Access;
 use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Core\Submissions;
 use CalendarServiceAppointmentsForm\Views\Admin\CalendarPage;
+use CalendarServiceAppointmentsForm\Views\Admin\OverviewPage;
 use CalendarServiceAppointmentsForm\Views\Admin\ServicesPage;
+use CalendarServiceAppointmentsForm\Views\Admin\ShortcodesPage;
 use CalendarServiceAppointmentsForm\Views\Admin\UsersPage;
 
 if (!defined('ABSPATH')) {
@@ -46,6 +48,8 @@ class Calendar {
      */
     public const SERVICES_MENU_SLUG = 'csa-services';
     public const USERS_MENU_SLUG = 'csa-users';
+    public const SHORTCODES_MENU_SLUG = 'csa-shortcodes';
+    public const OVERVIEW_MENU_SLUG = 'csa-overview';
 
     /**
      * Admin script/style handle
@@ -67,6 +71,8 @@ class Calendar {
      * @var string
      */
     public const LABEL_SERVICES = 'Services';
+    public const LABEL_SHORTCODES = 'Shortcode Guide';
+    public const LABEL_OVERVIEW = 'Overview';
 
     /**
      * @var Calendar|null
@@ -132,6 +138,15 @@ class Calendar {
 
         add_submenu_page(
             self::MENU_SLUG,
+            __(self::LABEL_OVERVIEW, self::TEXT_DOMAIN),
+            __(self::LABEL_OVERVIEW, self::TEXT_DOMAIN),
+            'read',
+            self::OVERVIEW_MENU_SLUG,
+            [$this, 'render_overview_page']
+        );
+
+        add_submenu_page(
+            self::MENU_SLUG,
             __(self::LABEL_SERVICES, self::TEXT_DOMAIN),
             __(self::LABEL_SERVICES, self::TEXT_DOMAIN),
             'manage_options',
@@ -146,6 +161,15 @@ class Calendar {
             'manage_options',
             self::USERS_MENU_SLUG,
             [$this, 'render_users_page']
+        );
+
+        add_submenu_page(
+            self::MENU_SLUG,
+            __(self::LABEL_SHORTCODES, self::TEXT_DOMAIN),
+            __(self::LABEL_SHORTCODES, self::TEXT_DOMAIN),
+            'manage_options',
+            self::SHORTCODES_MENU_SLUG,
+            [$this, 'render_shortcodes_page']
         );
     }
 
@@ -277,6 +301,7 @@ class Calendar {
             'users' => $users,
             'selected_user_id' => $selected_user_id,
             'is_admin' => $is_admin,
+            'shortcodes_url' => admin_url('admin.php?page=' . self::SHORTCODES_MENU_SLUG),
         ]);
     }
 
@@ -318,6 +343,39 @@ class Calendar {
             'users' => $users,
             'enabled' => $enabled,
             'saved' => ($saved === 1),
+        ]);
+    }
+
+    /**
+     * Render overview page
+     *
+     * @return void
+     */
+    public function render_overview_page() {
+        if (!current_user_can('read')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        OverviewPage::render([
+            'text_domain' => self::TEXT_DOMAIN,
+            'label' => self::LABEL_OVERVIEW,
+            'shortcodes_url' => admin_url('admin.php?page=' . self::SHORTCODES_MENU_SLUG),
+        ]);
+    }
+
+    /**
+     * Render shortcode guide page
+     *
+     * @return void
+     */
+    public function render_shortcodes_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        ShortcodesPage::render([
+            'text_domain' => self::TEXT_DOMAIN,
+            'label' => self::LABEL_SHORTCODES,
         ]);
     }
 

@@ -89,6 +89,7 @@ class AppointmentField {
         }
 
         if ($type === 'service_select' || $type === 'services') {
+            $select_label = $label !== '' ? $label : esc_html__('Select', $text_domain);
             $html .= '<div class="csa-appointment-services">';
             $html .= '<ul class="csa-service-list">';
             foreach ($services as $index => $service) {
@@ -117,6 +118,15 @@ class AppointmentField {
                 $html .= '</li>';
             }
             $html .= '</ul>';
+            $html .= '<select class="csa-service-select"><option value="" disabled selected>' . esc_html($select_label) . '</option>';
+            foreach ($services as $service) {
+                $title = isset($service['title']) ? $service['title'] : '';
+                if ($title === '') {
+                    continue;
+                }
+                $html .= '<option value="' . esc_attr($title) . '">' . esc_html($title) . '</option>';
+            }
+            $html .= '</select>';
             if (!empty($elementor_prop)) {
                 $prop_key = 'csa-field-' . $elementor_prop;
                 $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-elementor-prop-hidden" value="" />';
@@ -128,6 +138,7 @@ class AppointmentField {
                 $html .= '</div>';
                 return $html;
             }
+            $select_label = $label !== '' ? $label : esc_html__('Select', $text_domain);
             $html .= '<div class="csa-appointment-users">';
             $html .= '<ul class="csa-user-list">';
             foreach ($users as $index => $user) {
@@ -143,7 +154,7 @@ class AppointmentField {
                 $html .= '</li>';
             }
             $html .= '</ul>';
-            $html .= '<select class="csa-user-select"><option value="">' . esc_html__('Select a user', $text_domain) . '</option>';
+            $html .= '<select class="csa-user-select"><option value="" disabled selected>' . esc_html($select_label) . '</option>';
             foreach ($users as $user) {
                 $user_label = isset($user['label']) ? $user['label'] : '';
                 $user_name = isset($user['username']) ? $user['username'] : '';
@@ -161,13 +172,14 @@ class AppointmentField {
             }
             $html .= '</div>';
         } else {
+            $select_label = $label !== '' ? $label : esc_html__('Select', $text_domain);
             $html .= '<div class="csa-appointment-calendar">';
             $html .= '<div class="csa-calendar-widget"></div>';
             $html .= '<div class="csa-calendar-time">';
-            $html .= '<div class="csa-time-notification">Select A Service And Date To See Available Times.</div>';
+            $html .= '<div class="csa-time-notification">Select A Date To See Available Times.</div>';
             $html .= '<div class="csa-field csa-field-time">';
             $html .= '<ul class="csa-appointment-time-list"><li class="csa-time-placeholder">' . esc_html__('Select a day first', $text_domain) . '</li></ul>';
-            $html .= '<select name="appointment_time_select" class="csa-appointment-time-select"><option value="">' . esc_html__('Select a day first', $text_domain) . '</option></select>';
+            $html .= '<select name="appointment_time_select" class="csa-appointment-time-select"><option value="" disabled selected>' . esc_html($select_label) . '</option></select>';
             $html .= '</div></div>';
             $html .= '<input type="hidden" name="appointment_date" class="csa-appointment-date-hidden" value="" />';
             $html .= '<input type="hidden" name="appointment_time" class="csa-appointment-time-hidden" value="" />';

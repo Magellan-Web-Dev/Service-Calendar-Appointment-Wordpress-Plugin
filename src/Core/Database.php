@@ -860,7 +860,7 @@ class Database {
     }
 
     /**
-     * Delete appointments older than N months (based on created_at)
+     * Delete appointments older than N months (based on appointment date/time).
      *
      * @param int $months
      * @return int|false Number of rows deleted or false
@@ -871,8 +871,12 @@ class Database {
             return 0;
         }
 
-        $threshold = date('Y-m-d H:i:s', strtotime("-{$months} months"));
-        $sql = $wpdb->prepare("DELETE FROM {$this->appointments_table} WHERE created_at < %s", $threshold);
+        $threshold = gmdate('Y-m-d H:i:s', strtotime("-{$months} months"));
+        $sql = $wpdb->prepare(
+            "DELETE FROM {$this->appointments_table}
+                WHERE CONCAT(appointment_date, ' ', appointment_time) < %s",
+            $threshold
+        );
         return $wpdb->query($sql);
     }
 

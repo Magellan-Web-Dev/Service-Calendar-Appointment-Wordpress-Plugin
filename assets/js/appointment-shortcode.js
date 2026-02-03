@@ -201,6 +201,7 @@ class ServiceShortcode {
         this.fieldProp = container.dataset.fieldProp || '';
         this.username = getUsernameFromForm(container);
         this.items = qsa('.csa-service-item', container);
+        this.select = qs('.csa-service-select', container);
     }
 
     init() {
@@ -211,6 +212,18 @@ class ServiceShortcode {
         this.items.forEach((item) => {
             on(item, 'click', () => this.selectService(item));
         });
+
+        if (this.select) {
+            on(this.select, 'change', () => {
+                const value = this.select.value || '';
+                const match = this.items.find((entry) => entry.dataset.title === value);
+                if (match) {
+                    this.selectService(match);
+                } else {
+                    this.resetSelection();
+                }
+            });
+        }
 
         const preselected = this.items.find((item) => {
             const radio = qs('.csa-service-radio', item);
@@ -244,6 +257,9 @@ class ServiceShortcode {
         if (radio) {
             radio.checked = true;
         }
+        if (this.select && this.select.value !== title) {
+            this.select.value = title;
+        }
 
         if (this.form) {
             this.form.dataset.csaServiceDuration = Number.isFinite(durationSeconds) ? String(durationSeconds) : '0';
@@ -271,6 +287,9 @@ class ServiceShortcode {
                 radio.checked = false;
             }
         });
+        if (this.select) {
+            this.select.value = '';
+        }
 
         if (this.form) {
             this.form.dataset.csaServiceDuration = '0';
@@ -288,6 +307,9 @@ class ServiceShortcode {
     updateDisabledState() {
         const hasUser = !!getUsernameFromForm(this.container);
         this.container.classList.toggle('csa-field-disabled', !hasUser);
+        if (this.select) {
+            this.select.disabled = !hasUser;
+        }
         return hasUser;
     }
 }
@@ -335,6 +357,7 @@ class TimeShortcode {
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
         this.username = container.dataset.user || getUsernameFromForm(container);
+        this.selectLabel = (container.dataset.label || '').trim() || 'Select';
         this.calendar = qs('.csa-calendar-widget', container);
         this.calendarWrapper = qs('.csa-appointment-calendar', container);
         this.timeNotification = qs('.csa-time-notification', container);
@@ -355,6 +378,7 @@ class TimeShortcode {
         if (!this.calendar || !this.timeList) {
             return;
         }
+        this.updateTimeNotificationMessage();
 
         on(this.timeList, 'click', (event) => {
             const target = event.target.closest('li[data-value]');
@@ -386,6 +410,13 @@ class TimeShortcode {
         this.updateTimeNotificationState();
     }
 
+    updateTimeNotificationMessage() {
+        if (!this.timeNotification) {
+            return;
+        }
+        this.timeNotification.textContent = 'Select A Date To See Available Times.';
+    }
+
     getDurationSeconds() {
         if (!this.form) {
             return 0;
@@ -405,8 +436,7 @@ class TimeShortcode {
         }
         this.timeList.innerHTML = html;
         if (this.timeSelect) {
-            const optionLabel = placeholder || 'Select time';
-            this.timeSelect.innerHTML = `<option value="" disabled selected>${optionLabel}</option>`;
+            this.timeSelect.innerHTML = `<option value="" disabled selected>${this.selectLabel}</option>`;
             this.timeSelect.disabled = !!disabled;
         }
         if (this.timeField) {
@@ -721,7 +751,7 @@ class TimeShortcode {
                     });
                     this.timeList.innerHTML = html;
                     if (this.timeSelect) {
-                        let optionsHtml = '<option value="" disabled selected>Select time</option>';
+                        let optionsHtml = `<option value="" disabled selected>${this.selectLabel}</option>`;
                         times.forEach((time) => {
                             optionsHtml += '<option value="' + time.value + '">' + time.label + '</option>';
                         });
