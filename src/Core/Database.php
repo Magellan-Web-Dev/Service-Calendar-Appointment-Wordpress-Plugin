@@ -1009,6 +1009,9 @@ class Database {
     private function ensure_blocked_slots_user_column() {
         global $wpdb;
         if (!$this->does_table_exist($this->table_name)) {
+            self::create_tables();
+        }
+        if (!$this->does_table_exist($this->table_name)) {
             return;
         }
         if ($this->table_has_column($this->table_name, 'user_id')) {
