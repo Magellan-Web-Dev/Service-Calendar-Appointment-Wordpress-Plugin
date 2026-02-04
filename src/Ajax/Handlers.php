@@ -515,6 +515,18 @@ class Handlers {
         $db = Database::get_instance();
         $user_id = $this->resolve_request_user_id(true);
         $submissions = Submissions::get_instance();
+        $hours = $this->get_business_hours();
+        $hours_set = array_fill_keys($hours, true);
+        $slots_needed = $this->get_slots_needed($duration_seconds);
+
+        // Use a DB-level named lock to reduce race conditions between concurrent submissions.
+        global $wpdb;
+        $lock_name = 'csa_reserve_custom_' . $date . '_' . str_replace(':', '-', $time) . '_' . $duration_seconds . '_' . $user_id;
+        $got_lock = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, %d)", $lock_name, 5));
+        if (! $got_lock) {
+            wp_send_json_error(['message' => __('Please try again shortly, the system is checking availability.', self::TEXT_DOMAIN)]);
+        }
+
         $appointments = $submissions->get_appointments_for_date($date, $user_id);
         if (!is_array($appointments)) {
             $appointments = [];
@@ -522,12 +534,29 @@ class Handlers {
         $service_duration_map = $this->get_service_duration_map();
         $booked_set = $this->build_booked_set($appointments, $service_duration_map);
         $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date, $user_id));
-        $hours = $this->get_business_hours();
-        $hours_set = array_fill_keys($hours, true);
-        $slots_needed = $this->get_slots_needed($duration_seconds);
 
         if (!$this->is_time_range_open($time, $slots_needed, $blocked_set, $booked_set, $hours_set)) {
+            $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
             wp_send_json_error(['message' => __('That time range is not available for a custom appointment.', self::TEXT_DOMAIN)]);
+        }
+
+        $slots = $this->build_slot_times_for_duration($time, $duration_seconds);
+        if (empty($slots)) {
+            $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+            wp_send_json_error(['message' => __('That time range is not available for a custom appointment.', self::TEXT_DOMAIN)]);
+        }
+
+        $reserved = [];
+        foreach ($slots as $slot_time) {
+            $ok = $db->reserve_time_slot($date, $slot_time, $user_id);
+            if (!$ok) {
+                foreach ($reserved as $t) {
+                    $db->unblock_time_slot($date, $t, $user_id);
+                }
+                $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
+                wp_send_json_error(['message' => __('That time range is not available for a custom appointment.', self::TEXT_DOMAIN)]);
+            }
+            $reserved[] = $slot_time;
         }
 
         $submission_data = [
@@ -539,8 +568,14 @@ class Handlers {
 
         $insert_id = $db->insert_appointment(null, $date, $time, $submission_data, $user_id);
         if (!$insert_id) {
+            foreach ($reserved as $t) {
+                $db->unblock_time_slot($date, $t, $user_id);
+            }
+            $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
             wp_send_json_error(['message' => __('Failed to schedule custom appointment', self::TEXT_DOMAIN)]);
         }
+
+        $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 
         wp_send_json_success([
             'message' => __('Custom appointment scheduled', self::TEXT_DOMAIN),
