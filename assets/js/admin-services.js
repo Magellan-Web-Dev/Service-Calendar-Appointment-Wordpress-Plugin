@@ -1,4 +1,20 @@
-import { scrollToTopOnLoad } from './utils.js';
+const scrollToTopOnLoad = () => {
+    const scroll = () => {
+        window.scrollTo(0, 0);
+        if (document.documentElement) {
+            document.documentElement.scrollTop = 0;
+        }
+        if (document.body) {
+            document.body.scrollTop = 0;
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(scroll));
+    } else {
+        requestAnimationFrame(scroll);
+    }
+};
 
 (() => {
     const list = document.getElementById('csa-services-list');

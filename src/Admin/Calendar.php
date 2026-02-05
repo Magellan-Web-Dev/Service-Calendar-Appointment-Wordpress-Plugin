@@ -271,6 +271,7 @@ class Calendar {
         if ($is_services_page) {
             wp_enqueue_style('csa-admin-services', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/admin-services.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
             wp_enqueue_script('csa-admin-services', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/admin-services.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
+            wp_script_add_data('csa-admin-services', 'type', 'module');
         }
     }
 
