@@ -22,7 +22,17 @@ class Access {
      * @return array
      */
     public static function get_enabled_user_ids() {
-        $ids = get_option(self::OPTION_ENABLED_USERS, []);
+        $ids = get_option(self::OPTION_ENABLED_USERS, null);
+        if ($ids === false || $ids === null) {
+            $ids = [];
+            $admins = get_users([
+                'role' => 'administrator',
+                'fields' => ['ID'],
+            ]);
+            foreach ($admins as $admin) {
+                $ids[] = intval($admin->ID);
+            }
+        }
         if (!is_array($ids)) {
             return [];
         }
@@ -30,7 +40,7 @@ class Access {
     }
 
     /**
-     * Check if a user is enabled (admins always enabled).
+     * Check if a user is enabled.
      *
      * @param int $user_id
      * @return bool
@@ -43,9 +53,6 @@ class Access {
         $user = get_user_by('id', $user_id);
         if (!$user) {
             return false;
-        }
-        if (user_can($user, 'manage_options')) {
-            return true;
         }
         return in_array($user_id, self::get_enabled_user_ids(), true);
     }
@@ -95,14 +102,6 @@ class Access {
         }
 
         $enabled_ids = self::get_enabled_user_ids();
-        $admins = get_users([
-            'role' => 'administrator',
-            'fields' => ['ID'],
-        ]);
-        foreach ($admins as $admin) {
-            $enabled_ids[] = intval($admin->ID);
-        }
-        $enabled_ids = array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
         if (empty($enabled_ids)) {
             return 0;
         }

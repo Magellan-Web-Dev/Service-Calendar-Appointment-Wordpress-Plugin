@@ -130,6 +130,7 @@ class Shortcodes {
         $services = [];
         $service = [];
         $users = [];
+        $user_full_name = '';
         $anyone_value = '';
         if ($type === 'service_select' || $type === 'service') {
             $services = self::get_services_for_shortcode();
@@ -151,13 +152,6 @@ class Shortcodes {
 
         if ($type === 'user_select') {
             $enabled_ids = Access::get_enabled_user_ids();
-            $admins = get_users([
-                'role' => 'administrator',
-                'fields' => ['ID'],
-            ]);
-            foreach ($admins as $admin) {
-                $enabled_ids[] = intval($admin->ID);
-            }
             $enabled_ids = array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
             if (!empty($enabled_ids)) {
                 $user_rows = get_users([
@@ -177,10 +171,13 @@ class Shortcodes {
                     ];
                 }
             }
-            if (!$include_anyone && count($users) === 1) {
+            if (count($users) === 1) {
                 $type = 'user';
                 $username = $users[0]['username'];
+                $user_full_name = $users[0]['full_name'] ?? ($users[0]['label'] ?? '');
                 $hide_user_list = true;
+                $include_anyone = false;
+                $auto_anyone = false;
             }
             if ($include_anyone && (count($users) > 1 || $auto_anyone)) {
                 $anyone_value = Access::ANYONE_USERNAME;
@@ -196,6 +193,12 @@ class Shortcodes {
             if ($username !== Access::ANYONE_USERNAME && !Access::resolve_enabled_user_id($username)) {
                 return '<div class="csa-appointment-error">' . esc_html__('The specified user is not enabled to use this booking form.', self::TEXT_DOMAIN) . '</div>';
             }
+            if ($username !== Access::ANYONE_USERNAME && $user_full_name === '') {
+                $wp_user = get_user_by('login', $username);
+                if ($wp_user) {
+                    $user_full_name = Access::build_user_display_name($wp_user);
+                }
+            }
         }
 
         return AppointmentField::render([
@@ -207,6 +210,7 @@ class Shortcodes {
             'services' => $services,
             'service' => $service,
             'user' => $username,
+            'user_full_name' => $user_full_name,
             'users' => $users,
             'anyone_value' => $anyone_value,
             'auto_anyone' => $auto_anyone,

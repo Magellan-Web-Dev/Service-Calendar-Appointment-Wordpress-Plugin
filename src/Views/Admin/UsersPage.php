@@ -45,16 +45,15 @@ class UsersPage {
                     <tbody>
                         <?php foreach ($users as $user) :
                             $uid = intval($user->ID);
-                            $is_admin = user_can($user, 'manage_options');
                             $display = trim($user->first_name . ' ' . $user->last_name);
                             if ($display === '') {
                                 $display = $user->display_name;
                             }
-                            $checked = $is_admin || in_array($uid, $enabled, true);
+                            $checked = in_array($uid, $enabled, true);
                             ?>
                             <tr>
                                 <td>
-                                    <input type="checkbox" name="csa_enabled_users[]" value="<?php echo esc_attr($uid); ?>" <?php echo $checked ? 'checked' : ''; ?> <?php echo $is_admin ? 'disabled' : ''; ?> />
+                                    <input type="checkbox" name="csa_enabled_users[]" value="<?php echo esc_attr($uid); ?>" <?php echo $checked ? 'checked' : ''; ?> />
                                 </td>
                                 <td><?php echo esc_html($display); ?></td>
                                 <td><?php echo esc_html($user->user_login); ?></td>

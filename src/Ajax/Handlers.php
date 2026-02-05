@@ -496,6 +496,32 @@ class Handlers {
             wp_send_json_error(['message' => __('Failed to reschedule appointment', self::TEXT_DOMAIN)]);
         }
 
+        $reschedule_payload = [
+            'appt_id' => $appt_id,
+            'user_id' => $appointment_user_id,
+            'user' => $appointment_user_id ? get_user_by('id', $appointment_user_id) : null,
+            'submission_data' => $appointment['all_data'],
+            'old_date' => $appointment['date'],
+            'old_time' => $appointment['time'],
+            'new_date' => $date,
+            'new_time' => $time,
+        ];
+        /**
+         * Fires after an appointment is rescheduled from the admin calendar.
+         *
+         * @param array $reschedule_payload {
+         *     @type int $appt_id Appointment row ID.
+         *     @type int $user_id User ID the appointment is for.
+         *     @type \WP_User|null $user User object for the appointment.
+         *     @type array $submission_data Original form submission data.
+         *     @type string $old_date Previous appointment date (Y-m-d).
+         *     @type string $old_time Previous appointment time (HH:MM).
+         *     @type string $new_date Rescheduled appointment date (Y-m-d).
+         *     @type string $new_time Rescheduled appointment time (HH:MM).
+         * }
+         */
+        do_action('csa_appointment_reschedule', $reschedule_payload);
+
         wp_send_json_success(['message' => __('Appointment rescheduled', self::TEXT_DOMAIN)]);
     }
 
@@ -1165,19 +1191,12 @@ class Handlers {
     }
 
     /**
-     * Get selectable user IDs (enabled users + admins).
+     * Get selectable user IDs (enabled users).
      *
      * @return array
      */
     private function get_selectable_user_ids() {
         $enabled_ids = Access::get_enabled_user_ids();
-        $admins = get_users([
-            'role' => 'administrator',
-            'fields' => ['ID'],
-        ]);
-        foreach ($admins as $admin) {
-            $enabled_ids[] = intval($admin->ID);
-        }
         return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
     }
 

@@ -105,17 +105,19 @@ class UserShortcode {
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
         this.username = container.dataset.user || getUsernameFromForm(container);
+        this.fullName = container.dataset.userFullName || '';
     }
 
     init() {
         if (!this.username) {
             return;
         }
+        const fullName = (this.fullName || '').trim();
         if (this.prop) {
-            setElementorPropValue(this.form, this.prop, formatUserPropValue(this.username, this.username));
+            setElementorPropValue(this.form, this.prop, formatUserPropValue(this.username, fullName));
         }
         if (this.fieldProp) {
-            setFieldPropValue(this.fieldProp, formatUserPropValue(this.username, this.username));
+            setFieldPropValue(this.fieldProp, formatUserPropValue(this.username, fullName));
         }
     }
 }

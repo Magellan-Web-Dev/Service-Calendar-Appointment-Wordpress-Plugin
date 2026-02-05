@@ -841,19 +841,12 @@ class Elementor {
     }
 
     /**
-     * Get selectable user IDs (enabled users + admins).
+     * Get selectable user IDs (enabled users).
      *
      * @return array
      */
     private function get_selectable_user_ids() {
         $enabled_ids = Access::get_enabled_user_ids();
-        $admins = get_users([
-            'role' => 'administrator',
-            'fields' => ['ID'],
-        ]);
-        foreach ($admins as $admin) {
-            $enabled_ids[] = intval($admin->ID);
-        }
         return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
     }
 

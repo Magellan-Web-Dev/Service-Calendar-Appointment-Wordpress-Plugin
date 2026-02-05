@@ -28,6 +28,7 @@ class AppointmentField {
         $services = isset($context['services']) && is_array($context['services']) ? $context['services'] : [];
         $service = isset($context['service']) && is_array($context['service']) ? $context['service'] : [];
         $username = isset($context['user']) ? $context['user'] : '';
+        $user_full_name = isset($context['user_full_name']) ? $context['user_full_name'] : '';
         $users = isset($context['users']) && is_array($context['users']) ? $context['users'] : [];
         $anyone_value = isset($context['anyone_value']) ? $context['anyone_value'] : '';
         $auto_anyone = !empty($context['auto_anyone']);
@@ -46,6 +47,9 @@ class AppointmentField {
         }
         if (!empty($username)) {
             $html .= ' data-user="' . esc_attr($username) . '"';
+        }
+        if (!empty($user_full_name)) {
+            $html .= ' data-user-full-name="' . esc_attr($user_full_name) . '"';
         }
         if (!empty($anyone_value)) {
             $html .= ' data-anyone-value="' . esc_attr($anyone_value) . '"';
@@ -74,7 +78,11 @@ class AppointmentField {
             $html .= '<input type="hidden" name="form_fields[csa_user]" value="' . esc_attr($username) . '" />';
             if (!empty($elementor_prop)) {
                 $prop_key = 'csa-field-' . $elementor_prop;
-                $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-elementor-prop-hidden" value="' . esc_attr('csa::user --> ' . $username) . '" />';
+                $prop_value = 'csa::user --> ' . $username;
+                if ($user_full_name !== '') {
+                    $prop_value .= ' --> ' . $user_full_name;
+                }
+                $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-elementor-prop-hidden" value="' . esc_attr($prop_value) . '" />';
             }
         }
 
