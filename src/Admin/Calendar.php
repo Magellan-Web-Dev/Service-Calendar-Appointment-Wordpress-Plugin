@@ -311,7 +311,17 @@ class Calendar {
         $month_label = date('F Y', mktime(0, 0, 0, $current_month, 1, $current_year));
 
         $timezone = $this->get_timezone_string();
-        $users = $is_admin ? get_users(['orderby' => 'display_name', 'order' => 'ASC']) : [];
+        $users = [];
+        if ($is_admin) {
+            $enabled_ids = Access::get_enabled_user_ids();
+            if (!empty($enabled_ids)) {
+                $users = get_users([
+                    'include' => $enabled_ids,
+                    'orderby' => 'display_name',
+                    'order' => 'ASC',
+                ]);
+            }
+        }
 
         CalendarPage::render([
             'text_domain' => self::TEXT_DOMAIN,

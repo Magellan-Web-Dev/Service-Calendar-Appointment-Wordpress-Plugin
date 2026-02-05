@@ -98,7 +98,7 @@ class Plugin {
         Core\Submissions::get_instance();
         Admin\Calendar::get_instance();
         Admin\Multisite::get_instance();
-        Ajax\Handlers::get_instance();
+        Ajax\Handlers\Handlers::get_instance();
         Integrations\Elementor::get_instance();
         Rest\DayDetails::get_instance();
         Rest\Form::get_instance();

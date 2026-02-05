@@ -7,7 +7,7 @@
 
 namespace CalendarServiceAppointmentsForm\Rest;
 
-use CalendarServiceAppointmentsForm\Ajax\Handlers;
+use CalendarServiceAppointmentsForm\Ajax\Handlers\Handlers;
 use CalendarServiceAppointmentsForm\Core\Access;
 use CalendarServiceAppointmentsForm\Core\Database;
 use CalendarServiceAppointmentsForm\Core\Multisite;

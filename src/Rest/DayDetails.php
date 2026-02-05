@@ -7,7 +7,7 @@
 
 namespace CalendarServiceAppointmentsForm\Rest;
 
-use CalendarServiceAppointmentsForm\Ajax\Handlers;
+use CalendarServiceAppointmentsForm\Ajax\Handlers\Handlers;
 
 if (!defined('ABSPATH')) {
     exit;
