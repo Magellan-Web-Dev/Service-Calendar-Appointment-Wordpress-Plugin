@@ -108,19 +108,21 @@ class AppointmentField {
         if ($type === 'service_select' || $type === 'services') {
             $select_label = $label !== '' ? $label : esc_html__('Select', $text_domain);
             $html .= '<div class="csa-appointment-services">';
+            $html .= '<div class="csa-service-placeholder">' . esc_html__('Select user', $text_domain) . '</div>';
             $html .= '<ul class="csa-service-list">';
             foreach ($services as $index => $service) {
                 $title = isset($service['title']) ? $service['title'] : '';
                 if ($title === '') {
                     continue;
                 }
+                $slug = isset($service['slug']) ? (string) $service['slug'] : '';
                 $sub_heading = isset($service['sub_heading']) ? $service['sub_heading'] : '';
                 $description = isset($service['description']) ? $service['description'] : '';
                 $duration_label = isset($service['duration_label']) ? $service['duration_label'] : '';
                 $duration_seconds = isset($service['duration_seconds']) ? (int) $service['duration_seconds'] : 0;
                 $input_id = 'csa-service-' . intval($index) . '-' . wp_rand(1000, 9999);
 
-                $html .= '<li class="csa-service-item" data-title="' . esc_attr($title) . '" data-duration-seconds="' . esc_attr((string) $duration_seconds) . '">';
+                $html .= '<li class="csa-service-item" data-title="' . esc_attr($title) . '" data-service-slug="' . esc_attr($slug) . '" data-duration-seconds="' . esc_attr((string) $duration_seconds) . '">';
                 $html .= '<input type="radio" class="csa-service-radio" name="appointment_service" id="' . esc_attr($input_id) . '" value="' . esc_attr($title) . '" hidden />';
                 $html .= '<h4>' . esc_html($title) . '</h4>';
                 if (!empty($sub_heading)) {
@@ -141,7 +143,8 @@ class AppointmentField {
                 if ($title === '') {
                     continue;
                 }
-                $html .= '<option value="' . esc_attr($title) . '">' . esc_html($title) . '</option>';
+                $slug = isset($service['slug']) ? (string) $service['slug'] : '';
+                $html .= '<option value="' . esc_attr($title) . '" data-service-slug="' . esc_attr($slug) . '">' . esc_html($title) . '</option>';
             }
             $html .= '</select>';
             if (!empty($elementor_prop)) {

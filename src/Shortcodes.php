@@ -69,8 +69,24 @@ class Shortcodes {
         wp_enqueue_style(self::SCRIPT_HANDLE . '-styles', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/frontend.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
         wp_enqueue_script(self::SCRIPT_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/appointment-shortcode.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
         wp_script_add_data(self::SCRIPT_HANDLE, 'type', 'module');
+        $user_services = [];
+        $bookable_ids = Access::get_bookable_user_ids();
+        if (!empty($bookable_ids)) {
+            $user_rows = get_users([
+                'include' => $bookable_ids,
+                'fields' => ['ID', 'user_login'],
+            ]);
+            foreach ($user_rows as $user) {
+                $login = isset($user->user_login) ? (string) $user->user_login : '';
+                if ($login === '') {
+                    continue;
+                }
+                $user_services[$login] = Access::get_allowed_service_slugs_for_user($user->ID);
+            }
+        }
         wp_localize_script(self::SCRIPT_HANDLE, self::JS_OBJECT, [
             'ajax_url' => admin_url('admin-ajax.php'),
+            'user_services' => $user_services,
         ]);
     }
 
@@ -151,7 +167,7 @@ class Shortcodes {
         }
 
         if ($type === 'user_select') {
-            $enabled_ids = Access::get_enabled_user_ids();
+            $enabled_ids = Access::get_bookable_user_ids();
             $enabled_ids = array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
             if (!empty($enabled_ids)) {
                 $user_rows = get_users([

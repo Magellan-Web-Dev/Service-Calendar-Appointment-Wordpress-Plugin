@@ -271,8 +271,16 @@ class Elementor {
             return;
         }
         $user_id = isset($resolved['user_id']) ? $resolved['user_id'] : null;
+        if ($user_id && !Access::user_can_perform_service($user_id, $service_title)) {
+            $this->add_blocking_error($record, $ajax_handler, __('That user cannot perform the selected service.', self::TEXT_DOMAIN));
+            return;
+        }
         if (!$user_id) {
             $this->add_blocking_error($record, $ajax_handler, __('Please select a valid user before booking.', self::TEXT_DOMAIN));
+            return;
+        }
+        if (!Access::user_can_perform_service($user_id, $service_title)) {
+            $this->add_blocking_error($record, $ajax_handler, __('That user cannot perform the selected service.', self::TEXT_DOMAIN));
             return;
         }
         if (is_object($record) && method_exists($record, 'set') && !empty($resolved['username'])) {
@@ -1015,7 +1023,7 @@ class Elementor {
      * @return array
      */
     private function get_selectable_user_ids() {
-        $enabled_ids = Access::get_enabled_user_ids();
+        $enabled_ids = Access::get_bookable_user_ids();
         return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
     }
 

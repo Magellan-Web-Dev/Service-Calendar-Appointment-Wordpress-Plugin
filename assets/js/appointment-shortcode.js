@@ -69,6 +69,35 @@ const formatUserPropValue = (username, fullName) => {
     return `csa::user --> ${username} --> ${name}`;
 };
 
+const getServiceSlugsForUser = (username) => {
+    const config = window.csaAppointment || null;
+    if (!config || !config.user_services) {
+        return null;
+    }
+    const key = (username || '').trim();
+    if (!key) {
+        return null;
+    }
+    if (key in config.user_services) {
+        return Array.isArray(config.user_services[key]) ? config.user_services[key] : [];
+    }
+    return [];
+};
+
+const getAnyUserServiceSlugs = () => {
+    const config = window.csaAppointment || null;
+    if (!config || !config.user_services) {
+        return null;
+    }
+    const union = new Set();
+    Object.values(config.user_services).forEach((slugs) => {
+        if (Array.isArray(slugs)) {
+            slugs.forEach((slug) => union.add(slug));
+        }
+    });
+    return Array.from(union);
+};
+
 const clearElementorPropValue = (form, prop) => {
     setElementorPropValue(form, prop, '');
 };
@@ -280,7 +309,10 @@ class ServiceShortcode {
         this.fieldProp = container.dataset.fieldProp || '';
         this.username = getUsernameFromForm(container);
         this.items = qsa('.csa-service-item', container);
+        this.list = qs('.csa-service-list', container);
         this.select = qs('.csa-service-select', container);
+        this.placeholder = qs('.csa-service-placeholder', container);
+        this.anyoneAllowed = getAnyUserServiceSlugs();
     }
 
     init() {
@@ -314,11 +346,16 @@ class ServiceShortcode {
 
         if (this.form) {
             on(this.form, 'csa:userChanged', () => {
+                const username = getUsernameFromForm(this.container);
+                this.applyServiceFilter(username);
+                this.updateVisibility();
                 this.updateDisabledState();
                 this.resetSelection();
             });
         }
 
+        this.applyServiceFilter(this.username);
+        this.updateVisibility();
         this.updateDisabledState();
     }
 
@@ -385,11 +422,63 @@ class ServiceShortcode {
 
     updateDisabledState() {
         const hasUser = !!getUsernameFromForm(this.container);
-        this.container.classList.toggle('csa-field-disabled', !hasUser);
+        const hasServices = this.items.some((item) => item.style.display !== 'none');
+        const disabled = !hasUser || !hasServices;
+        this.container.classList.toggle('csa-field-disabled', disabled);
         if (this.select) {
-            this.select.disabled = !hasUser;
+            this.select.disabled = disabled;
         }
-        return hasUser;
+        return !disabled;
+    }
+
+    updateVisibility() {
+        const hasUser = !!getUsernameFromForm(this.container);
+        if (this.placeholder) {
+            this.placeholder.style.display = hasUser ? 'none' : '';
+        }
+        if (this.list) {
+            this.list.style.display = hasUser ? '' : 'none';
+        }
+        if (this.select) {
+            this.select.style.display = hasUser ? '' : 'none';
+        }
+    }
+
+    applyServiceFilter(username) {
+        const isAnyone = (username || '').trim() === '__anyone__';
+        let allowed = null;
+        if (isAnyone) {
+            allowed = this.anyoneAllowed;
+        } else {
+            allowed = getServiceSlugsForUser(username);
+        }
+        if (allowed === null) {
+            this.items.forEach((item) => {
+                item.style.display = '';
+            });
+            if (this.select) {
+                Array.from(this.select.options).forEach((option) => {
+                    option.hidden = false;
+                });
+            }
+            return;
+        }
+        const allowedSet = new Set(allowed || []);
+        this.items.forEach((item) => {
+            const slug = (item.dataset.serviceSlug || '').trim();
+            const show = slug && allowedSet.has(slug);
+            item.style.display = show ? '' : 'none';
+        });
+        if (this.select) {
+            Array.from(this.select.options).forEach((option) => {
+                const slug = (option.dataset.serviceSlug || '').trim();
+                if (!slug) {
+                    option.hidden = false;
+                } else {
+                    option.hidden = !allowedSet.has(slug);
+                }
+            });
+        }
     }
 }
 
@@ -716,6 +805,7 @@ class TimeShortcode {
                 month: monthVal,
                 duration_seconds: durationSeconds,
                 user: this.username,
+                service: this.form ? (this.form.dataset.csaServiceTitle || '') : '',
             });
 
             if (response && response.success && response.data && Array.isArray(response.data.days)) {
@@ -731,6 +821,7 @@ class TimeShortcode {
                             month: monthVal,
                             duration_seconds: durationSeconds,
                             user: this.username,
+                            service: this.form ? (this.form.dataset.csaServiceTitle || '') : '',
                         });
                         if (retry && retry.success && retry.data && Array.isArray(retry.data.days)) {
                             this.availableDays = new Set(retry.data.days.map((day) => day.value));
@@ -765,6 +856,7 @@ class TimeShortcode {
                     action: 'csa_get_available_days',
                     month: monthVal,
                     duration_seconds: durationSeconds,
+                    service: this.form ? (this.form.dataset.csaServiceTitle || '') : '',
                 });
                 if (response && response.success && response.data && Array.isArray(response.data.days) && response.data.days.length) {
                     return { year, month: monthIndex };
@@ -831,6 +923,7 @@ class TimeShortcode {
                 date: dateString,
                 duration_seconds: durationSeconds,
                 user: this.username,
+                service: this.form ? (this.form.dataset.csaServiceTitle || '') : '',
             });
 
             if (response && response.success && response.data && Array.isArray(response.data.times)) {
@@ -891,6 +984,7 @@ class TimeShortcode {
                 date: dateString,
                 duration_seconds: durationSeconds,
                 times: JSON.stringify(times),
+                service: this.form ? (this.form.dataset.csaServiceTitle || '') : '',
             });
             if (response && response.success && response.data && Array.isArray(response.data.times)) {
                 return response.data.times;
@@ -1070,6 +1164,7 @@ class TimeShortcode {
                 date: dateStr,
                 time: timeStr,
                 duration_seconds: durationSeconds,
+                service: this.form ? (this.form.dataset.csaServiceTitle || '') : '',
             });
             if (token !== this.resolveToken) {
                 return;

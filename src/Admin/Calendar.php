@@ -314,10 +314,10 @@ class Calendar {
         $timezone = $this->get_timezone_string();
         $users = [];
         if ($is_admin) {
-            $enabled_ids = Access::get_enabled_user_ids();
-            if (!empty($enabled_ids)) {
+            $bookable_ids = Access::get_bookable_user_ids();
+            if (!empty($bookable_ids)) {
                 $users = get_users([
-                    'include' => $enabled_ids,
+                    'include' => $bookable_ids,
                     'orderby' => 'display_name',
                     'order' => 'ASC',
                 ]);
@@ -372,12 +372,15 @@ class Calendar {
 
         $users = get_users(['orderby' => 'display_name', 'order' => 'ASC']);
         $enabled = Access::get_enabled_user_ids();
+        $db = Database::get_instance();
+        $services = $db->get_services();
         $saved = isset($_GET['csa_users_saved']) ? (int) $_GET['csa_users_saved'] : 0;
 
         UsersPage::render([
             'text_domain' => self::TEXT_DOMAIN,
             'users' => $users,
             'enabled' => $enabled,
+            'services' => $services,
             'saved' => ($saved === 1),
         ]);
     }
@@ -517,6 +520,42 @@ class Calendar {
             ? array_map('intval', $_POST['csa_enabled_users'])
             : [];
         Access::save_enabled_user_ids($enabled);
+
+        $services = Database::get_instance()->get_services();
+        $allowed_slugs = [];
+        foreach ($services as $service) {
+            if (!is_array($service)) {
+                continue;
+            }
+            $title = isset($service['title']) ? (string) $service['title'] : '';
+            $slug = '';
+            if (!empty($service['slug'])) {
+                $slug = sanitize_title($service['slug']);
+            }
+            if ($slug === '' && $title !== '') {
+                $slug = sanitize_title($title);
+            }
+            if ($slug !== '') {
+                $allowed_slugs[] = $slug;
+            }
+        }
+        $allowed_slugs = array_values(array_unique($allowed_slugs));
+
+        $posted_services = isset($_POST['csa_user_services']) && is_array($_POST['csa_user_services'])
+            ? $_POST['csa_user_services']
+            : [];
+        $users = get_users(['fields' => ['ID']]);
+        foreach ($users as $user) {
+            $uid = intval($user->ID);
+            $user_services = [];
+            if (isset($posted_services[$uid]) && is_array($posted_services[$uid])) {
+                $user_services = array_values(array_unique(array_filter(array_map('sanitize_title', $posted_services[$uid]))));
+                if (!empty($allowed_slugs)) {
+                    $user_services = array_values(array_intersect($user_services, $allowed_slugs));
+                }
+            }
+            Access::save_user_service_slugs($uid, $user_services);
+        }
 
         $redirect = add_query_arg(
             [

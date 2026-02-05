@@ -177,12 +177,20 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
             } elseif ($duration_raw !== '') {
                 $duration_label = $duration_raw;
             }
+            $slug = '';
+            if (!empty($service['slug'])) {
+                $slug = sanitize_title($service['slug']);
+            }
+            if ($slug === '' && $title !== '') {
+                $slug = sanitize_title($title);
+            }
             $services[] = [
                 'title' => $title,
                 'sub_heading' => $sub_heading,
                 'description' => $description,
                 'duration_seconds' => $duration_seconds,
                 'duration_label' => $duration_label,
+                'slug' => $slug,
             ];
         }
 

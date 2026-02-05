@@ -264,6 +264,9 @@ class Sync {
 
         $handler = Handlers::get_instance();
         $user_id = $this->resolve_user_id_from_submission($submission_data);
+        if ($user_id && $service && !Access::user_can_perform_service($user_id, $service)) {
+            return new \WP_Error('csa_invalid_service', __('That user cannot perform the selected service.', 'calendar-service-appointments-form'), ['status' => 400]);
+        }
         if (!$handler->check_time_range_available($date, $time, $duration, $user_id)) {
             return new \WP_Error('csa_unavailable', __('That date and time is not available.', 'calendar-service-appointments-form'), ['status' => 400]);
         }

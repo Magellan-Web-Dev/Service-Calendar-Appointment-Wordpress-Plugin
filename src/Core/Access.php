@@ -15,6 +15,7 @@ class Access {
 
     public const OPTION_ENABLED_USERS = 'csa_enabled_users';
     public const ANYONE_USERNAME = '__anyone__';
+    public const USER_SERVICES_META = 'csa_user_services';
 
     /**
      * Get enabled user IDs.
@@ -206,5 +207,193 @@ class Access {
         }
         $user_ids = array_values(array_unique(array_filter(array_map('intval', $user_ids))));
         update_option(self::OPTION_ENABLED_USERS, $user_ids);
+    }
+
+    /**
+     * Return all configured service slugs.
+     *
+     * @return array
+     */
+    public static function get_all_service_slugs() {
+        $db = Database::get_instance();
+        $services = $db->get_services();
+        $slugs = [];
+        foreach ($services as $service) {
+            if (!is_array($service)) {
+                continue;
+            }
+            $title = isset($service['title']) ? (string) $service['title'] : '';
+            $slug = '';
+            if (!empty($service['slug'])) {
+                $slug = sanitize_title($service['slug']);
+            }
+            if ($slug === '' && $title !== '') {
+                $slug = sanitize_title($title);
+            }
+            if ($slug !== '') {
+                $slugs[] = $slug;
+            }
+        }
+        return array_values(array_unique($slugs));
+    }
+
+    /**
+     * Resolve a service slug from a title or slug value.
+     *
+     * @param string $value
+     * @return string
+     */
+    public static function resolve_service_slug($value) {
+        if (!is_string($value)) {
+            return '';
+        }
+        $needle = trim($value);
+        if ($needle === '') {
+            return '';
+        }
+        $needle_slug = sanitize_title($needle);
+        $db = Database::get_instance();
+        $services = $db->get_services();
+        foreach ($services as $service) {
+            if (!is_array($service)) {
+                continue;
+            }
+            $title = isset($service['title']) ? (string) $service['title'] : '';
+            $slug = '';
+            if (!empty($service['slug'])) {
+                $slug = sanitize_title($service['slug']);
+            }
+            if ($slug === '' && $title !== '') {
+                $slug = sanitize_title($title);
+            }
+            if ($slug !== '' && $needle_slug === $slug) {
+                return $slug;
+            }
+            if ($title !== '' && strtolower($needle) === strtolower($title)) {
+                return $slug !== '' ? $slug : $needle_slug;
+            }
+        }
+        return $needle_slug;
+    }
+
+    /**
+     * Get explicitly saved service slugs for a user.
+     *
+     * @param int $user_id
+     * @return array|null
+     */
+    public static function get_user_service_slugs($user_id) {
+        $user_id = intval($user_id);
+        if ($user_id <= 0) {
+            return null;
+        }
+        $raw = get_user_meta($user_id, self::USER_SERVICES_META, true);
+        if ($raw === '' || $raw === null) {
+            return null;
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+        $allowed = self::get_all_service_slugs();
+        $clean = array_values(array_unique(array_filter(array_map('sanitize_title', $raw))));
+        if (!empty($allowed)) {
+            $clean = array_values(array_intersect($clean, $allowed));
+        }
+        return $clean;
+    }
+
+    /**
+     * Get allowed service slugs for a user (defaults to all services when unset).
+     *
+     * @param int $user_id
+     * @return array
+     */
+    public static function get_allowed_service_slugs_for_user($user_id) {
+        $saved = self::get_user_service_slugs($user_id);
+        if ($saved !== null) {
+            return $saved;
+        }
+        return self::get_all_service_slugs();
+    }
+
+    /**
+     * Save allowed service slugs for a user.
+     *
+     * @param int $user_id
+     * @param array $slugs
+     * @return void
+     */
+    public static function save_user_service_slugs($user_id, $slugs) {
+        $user_id = intval($user_id);
+        if ($user_id <= 0) {
+            return;
+        }
+        if (!is_array($slugs)) {
+            $slugs = [];
+        }
+        $allowed = self::get_all_service_slugs();
+        $clean = array_values(array_unique(array_filter(array_map('sanitize_title', $slugs))));
+        if (!empty($allowed)) {
+            $clean = array_values(array_intersect($clean, $allowed));
+        }
+        update_user_meta($user_id, self::USER_SERVICES_META, $clean);
+    }
+
+    /**
+     * Check if a user can perform a given service.
+     *
+     * @param int $user_id
+     * @param string $service_value
+     * @return bool
+     */
+    public static function user_can_perform_service($user_id, $service_value) {
+        $user_id = intval($user_id);
+        if ($user_id <= 0) {
+            return false;
+        }
+        $slug = self::resolve_service_slug($service_value);
+        if ($slug === '') {
+            return false;
+        }
+        $allowed = self::get_allowed_service_slugs_for_user($user_id);
+        return in_array($slug, $allowed, true);
+    }
+
+    /**
+     * Get enabled user IDs that have at least one allowed service.
+     *
+     * @return array
+     */
+    public static function get_bookable_user_ids() {
+        $enabled = self::get_enabled_user_ids();
+        $bookable = [];
+        foreach ($enabled as $user_id) {
+            $allowed = self::get_allowed_service_slugs_for_user($user_id);
+            if (!empty($allowed)) {
+                $bookable[] = $user_id;
+            }
+        }
+        return array_values(array_unique($bookable));
+    }
+
+    /**
+     * Get enabled user IDs that can perform a service.
+     *
+     * @param string $service_value
+     * @return array
+     */
+    public static function get_user_ids_for_service($service_value) {
+        $slug = self::resolve_service_slug($service_value);
+        if ($slug === '') {
+            return [];
+        }
+        $enabled = self::get_enabled_user_ids();
+        $matches = [];
+        foreach ($enabled as $user_id) {
+            if (self::user_can_perform_service($user_id, $slug)) {
+                $matches[] = $user_id;
+            }
+        }
+        return array_values(array_unique($matches));
     }
 }
