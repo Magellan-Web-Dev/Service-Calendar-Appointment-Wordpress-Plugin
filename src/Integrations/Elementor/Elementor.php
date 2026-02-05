@@ -8,6 +8,7 @@
 namespace CalendarServiceAppointmentsForm\Integrations\Elementor;
 
 use CalendarServiceAppointmentsForm\Core\Database;
+use CalendarServiceAppointmentsForm\Core\Access;
 use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Core\Submissions;
 use CalendarServiceAppointmentsForm\Integrations\Elementor\Fields\Appointment;
@@ -69,7 +70,6 @@ class Elementor {
         add_action('elementor_pro/forms/validation', [$this, 'validate_appointment_form'], 10, 2);
 
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[CSA] Elementor::__construct called');
         }
     }
 
@@ -83,28 +83,23 @@ class Elementor {
         if (class_exists('\ElementorPro\Modules\Forms\Module')) {
             try {
                 if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[CSA] maybe_register_fields: Module class exists');
                 }
                 $module = \ElementorPro\Modules\Forms\Module::instance();
                 if (is_object($module)) {
                     if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log('[CSA] maybe_register_fields: Module::instance returned object');
                     }
                     // Prefer calling our registration routine which uses add_field_type
                     $this->register_appointment_fields($module);
                 } else {
                     if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log('[CSA] maybe_register_fields: Module::instance did not return object');
                     }
                 }
             } catch (\Throwable $e) {
                 if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[CSA] maybe_register_fields error: ' . $e->getMessage());
                 }
             }
         } else {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[CSA] maybe_register_fields: Module class does not exist yet');
             }
         }
     }
@@ -116,7 +111,6 @@ class Elementor {
      */
     public function init_elementor_integration() {
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[CSA] init_elementor_integration called (processing only)');
         }
         // Only hook into form processing to validate appointment fields submitted via shortcode
         add_action('elementor_pro/forms/process', [$this, 'process_appointment_form'], 10, 2);
@@ -131,8 +125,6 @@ class Elementor {
     public function register_appointment_fields($form_module) {
         // register field types with Elementor Pro forms module
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[CSA] register_appointment_fields called');
-            error_log('[CSA] form_module class: ' . (is_object($form_module) ? get_class($form_module) : 'not-object'));
         }
         // Register legacy separate date/time fields (kept for compatibility)
         if (!is_object($form_module) || !method_exists($form_module, 'add_field_type')) {
@@ -144,7 +136,6 @@ class Elementor {
         // Register combined Appointment field for the editor
         $form_module->add_field_type(Appointment::TYPE, Appointment::class);
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[CSA] registered field types: ' . AppointmentDate::TYPE . ', ' . AppointmentTime::TYPE . ', ' . Appointment::TYPE);
         }
     }
 
@@ -210,7 +201,11 @@ class Elementor {
      * @return void
      */
     public function process_appointment_form($record, $ajax_handler) {
-        $raw_fields = $record->get('fields');
+        $raw_fields_original = $record->get('fields');
+        $raw_fields = $this->sanitize_prefixed_props($raw_fields_original);
+        if (method_exists($record, 'set')) {
+            $record->set('fields', $raw_fields);
+        }
 
         $has_appointment_fields = false;
         $appointment_date = '';
@@ -253,7 +248,7 @@ class Elementor {
         }
 
         if (empty($appointment_date) || empty($appointment_time)) {
-            $ajax_handler->add_error_message(__('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
             return;
         }
 
@@ -265,14 +260,33 @@ class Elementor {
         $service_title = $this->get_service_title_from_fields($raw_fields);
         $duration_seconds = $this->get_service_duration_seconds($service_title);
         if ($duration_seconds <= 0) {
-            $ajax_handler->add_error_message(__('Please select a valid service before booking.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('Please select a valid service before booking.', self::TEXT_DOMAIN));
             return;
+        }
+
+        $username = $this->get_user_from_fields($raw_fields_original ?: $raw_fields);
+        $resolved = $this->resolve_booking_user($appointment_date, $appointment_time, $duration_seconds, $username);
+        if (is_wp_error($resolved)) {
+            $this->add_blocking_error($record, $ajax_handler, $resolved->get_error_message());
+            return;
+        }
+        $user_id = isset($resolved['user_id']) ? $resolved['user_id'] : null;
+        if (!$user_id) {
+            $this->add_blocking_error($record, $ajax_handler, __('Please select a valid user before booking.', self::TEXT_DOMAIN));
+            return;
+        }
+        if (!empty($resolved['username'])) {
+            $raw_fields = $this->apply_user_to_fields($raw_fields, $resolved['username'], $resolved['display_name'] ?? '');
+            $raw_fields = $this->sanitize_prefixed_props($raw_fields);
+            if (method_exists($record, 'set')) {
+                $record->set('fields', $raw_fields);
+            }
         }
 
         if (Multisite::is_child()) {
             $normalized_time = $this->normalize_time_value($appointment_time);
             if ($normalized_time === '') {
-                $ajax_handler->add_error_message(__('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
+                $this->add_blocking_error($record, $ajax_handler, __('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
                 return;
             }
 
@@ -286,7 +300,7 @@ class Elementor {
 
             $booked = $this->book_on_master_site($appointment_date, $normalized_time, $service_title, $duration_seconds, $submission_data);
             if (is_wp_error($booked)) {
-                $ajax_handler->add_error_message($booked->get_error_message());
+                $this->add_blocking_error($record, $ajax_handler, $booked->get_error_message());
                 return;
             }
 
@@ -294,7 +308,6 @@ class Elementor {
         }
 
         $db = Database::get_instance();
-        $user_id = null;
 
         // Use a DB-level named lock to reduce race conditions between concurrent submissions.
         global $wpdb;
@@ -302,20 +315,20 @@ class Elementor {
         $got_lock = $wpdb->get_var($wpdb->prepare("SELECT GET_LOCK(%s, %d)", $lock_name, 5));
 
         if (! $got_lock) {
-            $ajax_handler->add_error_message(__('Please try again shortly, the system is checking availability.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('Please try again shortly, the system is checking availability.', self::TEXT_DOMAIN));
             return;
         }
 
         $slots = $this->build_slot_times($appointment_time, $duration_seconds);
         if (empty($slots)) {
             $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
-            $ajax_handler->add_error_message(__('This current time slot has already been taken, please select another.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('This current time slot has already been taken, please select another.', self::TEXT_DOMAIN));
             return;
         }
 
         if (! $this->is_time_range_available($appointment_date, $slots, $db, Submissions::get_instance(), $user_id)) {
             $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
-            $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
             return;
         }
 
@@ -323,7 +336,7 @@ class Elementor {
         $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
 
         if (! $reserved) {
-            $ajax_handler->add_error_message(__('This current time slot has already been taken, please select another.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('This current time slot has already been taken, please select another.', self::TEXT_DOMAIN));
             return;
         }
 
@@ -338,13 +351,14 @@ class Elementor {
      * @return void
      */
     public function validate_appointment_form($record, $ajax_handler) {
+        $raw_fields_original = null;
         try {
-            $raw_fields = $record->get('fields');
+            $raw_fields_original = $record->get('fields');
         } catch (\Throwable $e) {
             return;
         }
 
-        $raw_fields = $this->sanitize_prefixed_props($raw_fields);
+        $raw_fields = $this->sanitize_prefixed_props($raw_fields_original);
         if (method_exists($record, 'set')) {
             $record->set('fields', $raw_fields);
         }
@@ -365,8 +379,21 @@ class Elementor {
         $service_title = $this->get_service_title_from_fields($raw_fields);
         $duration_seconds = $this->get_service_duration_seconds($service_title);
         if ($duration_seconds <= 0) {
-            $ajax_handler->add_error_message(__('Please select a valid service before booking.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('Please select a valid service before booking.', self::TEXT_DOMAIN));
             return;
+        }
+
+        $username = $this->get_user_from_fields($raw_fields_original ?: $raw_fields);
+        if ($username === '') {
+            $this->add_blocking_error($record, $ajax_handler, __('Please select a valid user before booking.', self::TEXT_DOMAIN));
+            return;
+        }
+        if (Access::is_anyone_username($username)) {
+            $any = $this->has_any_available_user($appointment_date, $appointment_time, $duration_seconds);
+            if (!$any) {
+                $this->add_blocking_error($record, $ajax_handler, __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+                return;
+            }
         }
 
         if (strlen($appointment_time) === 5) {
@@ -381,22 +408,36 @@ class Elementor {
 
             $availability = $this->check_master_time_available($appointment_date, $normalized_time, $duration_seconds);
             if (is_wp_error($availability)) {
-                $ajax_handler->add_error_message($availability->get_error_message());
+                $this->add_blocking_error($record, $ajax_handler, $availability->get_error_message());
             }
             return;
         }
 
         $slots = $this->build_slot_times($appointment_time, $duration_seconds);
         if (empty($slots)) {
-            $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
             return;
         }
 
         $db = Database::get_instance();
         $submissions = Submissions::get_instance();
         $user_id = null;
+        if (!empty($username) && !Access::is_anyone_username($username)) {
+            $user_id = Access::resolve_enabled_user_id($username);
+            if (!$user_id) {
+                $user_id = Access::resolve_enabled_user_id_by_name($username);
+            }
+            if (!$user_id) {
+                $this->add_blocking_error($record, $ajax_handler, __('Invalid user for booking.', self::TEXT_DOMAIN));
+                return;
+            }
+        }
         if (! $this->is_time_range_available($appointment_date, $slots, $db, $submissions, $user_id)) {
-            $ajax_handler->add_error_message(__('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            $this->add_blocking_error($record, $ajax_handler, __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            return;
+        }
+        if ($user_id && $submissions->is_slot_booked($appointment_date, $appointment_time, $user_id)) {
+            $this->add_blocking_error($record, $ajax_handler, __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
         }
     }
 
@@ -412,13 +453,14 @@ class Elementor {
             return;
         }
 
+        $raw_fields_original = null;
         try {
-            $raw_fields = $record->get('fields');
+            $raw_fields_original = $record->get('fields');
         } catch (\Throwable $e) {
             return;
         }
 
-        $raw_fields = $this->sanitize_prefixed_props($raw_fields);
+        $raw_fields = $this->sanitize_prefixed_props($raw_fields_original);
         if (method_exists($record, 'set')) {
             $record->set('fields', $raw_fields);
         }
@@ -456,13 +498,25 @@ class Elementor {
                     $submission_data['csa_custom_duration_seconds'] = $duration_seconds;
                 }
             }
-            $insert_id = $db->insert_appointment($submission_id, $date, $time, $submission_data);
+            $username_raw = $this->get_user_from_fields($raw_fields_original ?: $raw_fields);
+            if ($username_raw !== '' && empty($submission_data['csa_username'])) {
+                $submission_data['csa_username'] = $username_raw;
+            }
+            $user_id = $this->resolve_user_id_from_submission($submission_data);
+            if (!$user_id) {
+                return;
+            }
+            if ($duration_seconds > 0) {
+                $slots = $this->build_slot_times($time, $duration_seconds);
+                if (empty($slots) || ! $this->is_time_range_available($date, $slots, Database::get_instance(), Submissions::get_instance(), $user_id)) {
+                    return;
+                }
+            }
+            $insert_id = $db->insert_appointment($submission_id, $date, $time, $submission_data, $user_id);
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 if ($insert_id === false) {
                     global $wpdb;
-                    error_log('[CSA] insert_appointment FAILED for submission ' . var_export($submission_id, true) . ' date=' . $date . ' time=' . $time . ' error=' . $wpdb->last_error);
                 } else {
-                    error_log('[CSA] insert_appointment succeeded id=' . intval($insert_id) . ' for submission ' . var_export($submission_id, true) . ' date=' . $date . ' time=' . $time);
                 }
             }
             return;
@@ -488,7 +542,6 @@ class Elementor {
                 $time_part = $m[2];
 
                 if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[CSA] handle_new_record matched value: ' . $value . ' (submission_id=' . var_export($submission_id, true) . ')');
                 }
 
                 $found_any = true;
@@ -518,22 +571,33 @@ class Elementor {
                         $submission_data['csa_custom_duration_seconds'] = $duration_seconds;
                     }
                 }
+                $username_raw = $this->get_user_from_fields($raw_fields_original ?: $raw_fields);
+                if ($username_raw !== '' && empty($submission_data['csa_username'])) {
+                    $submission_data['csa_username'] = $username_raw;
+                }
 
                 // Insert appointment row (store submission_data JSON)
-                $insert_id = $db->insert_appointment($submission_id, $date, $time, $submission_data);
+                $user_id = $this->resolve_user_id_from_submission($submission_data);
+                if (!$user_id) {
+                    return;
+                }
+                if ($duration_seconds > 0) {
+                    $slots = $this->build_slot_times($time, $duration_seconds);
+                    if (empty($slots) || ! $this->is_time_range_available($date, $slots, Database::get_instance(), Submissions::get_instance(), $user_id)) {
+                        return;
+                    }
+                }
+                $insert_id = $db->insert_appointment($submission_id, $date, $time, $submission_data, $user_id);
                 if (defined('WP_DEBUG') && WP_DEBUG) {
                     if ($insert_id === false) {
                         global $wpdb;
-                        error_log('[CSA] insert_appointment FAILED for submission ' . var_export($submission_id, true) . ' date=' . $date . ' time=' . $time . ' error=' . $wpdb->last_error);
                     } else {
-                        error_log('[CSA] insert_appointment succeeded id=' . intval($insert_id) . ' for submission ' . var_export($submission_id, true) . ' date=' . $date . ' time=' . $time);
                     }
                 }
             }
         }
 
         if (defined('WP_DEBUG') && WP_DEBUG && ! $found_any) {
-            error_log('[CSA] handle_new_record found no composite appointment values for submission ' . var_export($submission_id, true));
         }
     }
 
@@ -574,6 +638,226 @@ class Elementor {
     }
 
     /**
+     * Get username from supported field names or prefixed props.
+     *
+     * @param array $raw_fields
+     * @return string
+     */
+    private function get_user_from_fields($raw_fields) {
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'csa_username'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'csa_user'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'csa_user_select'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'form_fields[csa_username]'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'form_fields[csa_user]'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'form_fields[csa_user_select]'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'user'));
+        if ($user !== '') {
+            return $user;
+        }
+        $user = $this->extract_prop_value($raw_fields, 'user');
+        if ($user !== '') {
+            return $user;
+        }
+        return '';
+    }
+
+    /**
+     * Normalize a username value that may include CSA composite prefixes.
+     *
+     * @param string $value
+     * @return string
+     */
+    private function normalize_username_value($value) {
+        if (!is_string($value)) {
+            return '';
+        }
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        if (stripos($value, 'csa::user') === 0 && strpos($value, '-->') !== false) {
+            $parts = array_map('trim', explode('-->', $value));
+            if (isset($parts[1]) && $parts[1] !== '') {
+                return $parts[1];
+            }
+        }
+        return $value;
+    }
+
+    /**
+     * Apply a resolved username back into submission fields.
+     *
+     * @param array $raw_fields
+     * @param string $username
+     * @return array
+     */
+    private function apply_user_to_fields($raw_fields, $username, $display_name = '') {
+        if ($username === '') {
+            return $raw_fields;
+        }
+        $display_name = $display_name !== '' ? $display_name : $username;
+        $composite = 'csa::user --> ' . $username . ' --> ' . $display_name;
+        foreach ($raw_fields as $idx => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            $field_name = isset($field['name']) ? (string) $field['name'] : '';
+            $field_id = isset($field['id']) ? (string) $field['id'] : '';
+            if (!empty($field['name'])) {
+                $name = $field['name'];
+                if ($name === 'csa_user' || $name === 'csa_username' || $name === 'form_fields[csa_user]') {
+                    $raw_fields[$idx]['value'] = $username;
+                    continue;
+                }
+                if (strpos($name, 'csa-field-') === 0) {
+                    $raw_fields[$idx]['value'] = $composite;
+                    continue;
+                }
+            }
+            if ($field_id && strpos($field_id, 'csa-field-') === 0) {
+                $raw_fields[$idx]['value'] = $composite;
+                continue;
+            }
+            if (isset($field['value']) && is_string($field['value'])) {
+                $val = trim($field['value']);
+                if (stripos($val, 'csa::user') === 0 && strpos($val, '-->') !== false) {
+                    $raw_fields[$idx]['value'] = $composite;
+                } elseif ($val === Access::ANYONE_USERNAME) {
+                    if ($field_name !== '' && (strpos($field_name, 'csa-field-') === 0)) {
+                        $raw_fields[$idx]['value'] = $composite;
+                    } elseif ($field_id !== '' && (strpos($field_id, 'csa-field-') === 0)) {
+                        $raw_fields[$idx]['value'] = $composite;
+                    } else {
+                        $raw_fields[$idx]['value'] = $username;
+                    }
+                }
+            }
+        }
+        return $raw_fields;
+    }
+
+    /**
+     * Resolve booking user for a submission (supports "anyone").
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $duration_seconds
+     * @param string $username
+     * @return array|\WP_Error
+     */
+    private function resolve_booking_user($date, $time, $duration_seconds, $username) {
+        $username = is_string($username) ? trim($username) : '';
+        if ($username === '') {
+            return ['user_id' => null, 'username' => ''];
+        }
+        if (Access::is_anyone_username($username)) {
+            $available = $this->get_available_user_ids_for_slot($date, $time, $duration_seconds);
+            if (empty($available)) {
+                return new \WP_Error('csa_unavailable', __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            }
+            $idx = random_int(0, count($available) - 1);
+            $user_id = $available[$idx];
+            $user = get_user_by('id', $user_id);
+            $login = $user ? $user->user_login : '';
+            if ($login === '') {
+                return new \WP_Error('csa_unavailable', __('That date and time is not available, please select another.', self::TEXT_DOMAIN));
+            }
+            return [
+                'user_id' => $user_id,
+                'username' => $login,
+                'display_name' => $user ? Access::build_user_display_name($user) : $login,
+            ];
+        }
+
+        $user_id = Access::resolve_enabled_user_id($username);
+        if (!$user_id) {
+            $user_id = Access::resolve_enabled_user_id_by_name($username);
+        }
+        if (!$user_id) {
+            return new \WP_Error('csa_invalid_user', __('Invalid user for booking.', self::TEXT_DOMAIN));
+        }
+        $user = get_user_by('id', $user_id);
+        $login = $user ? $user->user_login : $username;
+        return [
+            'user_id' => $user_id,
+            'username' => $login,
+            'display_name' => $user ? Access::build_user_display_name($user) : $username,
+        ];
+    }
+
+    /**
+     * Check if any selectable user is available for the given slot.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $duration_seconds
+     * @return bool
+     */
+    private function has_any_available_user($date, $time, $duration_seconds) {
+        $available = $this->get_available_user_ids_for_slot($date, $time, $duration_seconds);
+        return !empty($available);
+    }
+
+    /**
+     * Get selectable user IDs that are available for a slot.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $duration_seconds
+     * @return array
+     */
+    private function get_available_user_ids_for_slot($date, $time, $duration_seconds) {
+        $slots = $this->build_slot_times($time, $duration_seconds);
+        if (empty($slots)) {
+            return [];
+        }
+        $db = Database::get_instance();
+        $submissions = Submissions::get_instance();
+        $available = [];
+        foreach ($this->get_selectable_user_ids() as $user_id) {
+            if ($this->is_time_range_available($date, $slots, $db, $submissions, $user_id)) {
+                $available[] = $user_id;
+            }
+        }
+        return $available;
+    }
+
+    /**
+     * Get selectable user IDs (enabled users + admins).
+     *
+     * @return array
+     */
+    private function get_selectable_user_ids() {
+        $enabled_ids = Access::get_enabled_user_ids();
+        $admins = get_users([
+            'role' => 'administrator',
+            'fields' => ['ID'],
+        ]);
+        foreach ($admins as $admin) {
+            $enabled_ids[] = intval($admin->ID);
+        }
+        return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
+    }
+
+    /**
      * Extract a prefixed prop value (csa::service --> value, csa::time --> value).
      *
      * @param array $raw_fields
@@ -593,7 +877,10 @@ class Elementor {
                 continue;
             }
             if (stripos($value, $prefix) === 0 && strpos($value, '-->') !== false) {
-                $parts = explode('-->', $value, 2);
+                $parts = array_map('trim', explode('-->', $value));
+                if ($type === 'user' && isset($parts[1])) {
+                    return trim($parts[1]);
+                }
                 if (isset($parts[1])) {
                     return trim($parts[1]);
                 }
@@ -634,7 +921,7 @@ class Elementor {
      * @return array
      */
     private function sanitize_prefixed_props($raw_fields) {
-        $prefixes = ['csa::service', 'csa::time'];
+        $prefixes = ['csa::service', 'csa::time', 'csa::user'];
         foreach ($raw_fields as $idx => $field) {
             if (!is_array($field) || !isset($field['value'])) {
                 continue;
@@ -645,8 +932,13 @@ class Elementor {
             }
             foreach ($prefixes as $prefix) {
                 if (stripos($value, $prefix) === 0) {
-                    $parts = explode('-->', $value, 2);
-                    $clean = isset($parts[1]) ? trim($parts[1]) : '';
+                    if ($prefix === 'csa::user') {
+                        $parts = array_map('trim', explode('-->', $value));
+                        $clean = isset($parts[2]) && $parts[2] !== '' ? $parts[2] : (isset($parts[1]) ? $parts[1] : '');
+                    } else {
+                        $parts = explode('-->', $value, 2);
+                        $clean = isset($parts[1]) ? trim($parts[1]) : '';
+                    }
                     $raw_fields[$idx]['value'] = $clean;
                     break;
                 }
@@ -687,6 +979,33 @@ class Elementor {
             $submission_data[$key] = $val;
         }
         return $submission_data;
+    }
+
+    /**
+     * Resolve user id from submission data (if available).
+     *
+     * @param array $submission_data
+     * @return int|null
+     */
+    private function resolve_user_id_from_submission($submission_data) {
+        if (!is_array($submission_data)) {
+            return null;
+        }
+        if (!empty($submission_data['csa_username']) && !Access::is_anyone_username($submission_data['csa_username'])) {
+            $user_id = Access::resolve_enabled_user_id($submission_data['csa_username']);
+            if ($user_id) {
+                return $user_id;
+            }
+        }
+        if (!empty($submission_data['csa_user']) && !Access::is_anyone_username($submission_data['csa_user'])) {
+            $user_id = Access::resolve_enabled_user_id($submission_data['csa_user']);
+            if ($user_id) {
+                return $user_id;
+            }
+            $user_id = Access::resolve_enabled_user_id_by_name($submission_data['csa_user']);
+            return $user_id ?: null;
+        }
+        return null;
     }
 
     /**
@@ -921,5 +1240,19 @@ class Elementor {
      */
     private function book_on_master_site($date, $time, $service_title, $duration_seconds, $submission_data) {
         return Multisite::book_on_master($date, $time, $service_title, $duration_seconds, $submission_data);
+    }
+
+    /**
+     * Add an Elementor error message.
+     *
+     * @param object $record
+     * @param object $ajax_handler
+     * @param string $message
+     * @return void
+     */
+    private function add_blocking_error($record, $ajax_handler, $message) {
+        if (is_object($ajax_handler) && method_exists($ajax_handler, 'add_error_message')) {
+            $ajax_handler->add_error_message($message);
+        }
     }
 }

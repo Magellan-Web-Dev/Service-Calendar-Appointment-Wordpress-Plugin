@@ -147,7 +147,6 @@ class Sync {
 
         if (!$provided || $provided !== $expected) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[CSA] sync auth failed. provided=' . ($provided ? 'yes' : 'no'));
             }
             return new \WP_Error('csa_sync_invalid_key', __('Invalid API key.', 'calendar-service-appointments-form'), ['status' => 403]);
         }
@@ -182,6 +181,11 @@ class Sync {
             return new \WP_Error('csa_invalid_duration', __('Invalid duration', 'calendar-service-appointments-form'), ['status' => 400]);
         }
 
+        if (Access::is_anyone_username($username)) {
+            $times = Handlers::get_instance()->build_available_times_anyone($date, $duration);
+            return rest_ensure_response(['times' => $times]);
+        }
+
         $user_id = $username ? Access::resolve_enabled_user_id($username) : null;
         $times = Handlers::get_instance()->build_available_times($date, $duration, $user_id);
         return rest_ensure_response(['times' => $times]);
@@ -205,6 +209,10 @@ class Sync {
         }
 
         $slots_needed = $duration > 0 ? (int) ceil($duration / 1800) : 1;
+        if (Access::is_anyone_username($username)) {
+            $days = Handlers::get_instance()->build_available_days_anyone($month, $slots_needed);
+            return rest_ensure_response(['days' => $days]);
+        }
         $user_id = $username ? Access::resolve_enabled_user_id($username) : null;
         $days = Handlers::get_instance()->build_available_days($month, $slots_needed, $user_id);
         return rest_ensure_response(['days' => $days]);
@@ -285,7 +293,6 @@ class Sync {
             }
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 global $wpdb;
-                error_log('[CSA] sync book insert failed date=' . $date . ' time=' . $time . ' error=' . $wpdb->last_error);
             }
             return new \WP_Error('csa_booking_failed', __('Failed to store appointment.', 'calendar-service-appointments-form'), ['status' => 500]);
         }
@@ -303,10 +310,10 @@ class Sync {
 
     private function resolve_user_id_from_submission($submission_data) {
         if (is_array($submission_data)) {
-            if (!empty($submission_data['csa_user'])) {
+            if (!empty($submission_data['csa_user']) && !Access::is_anyone_username($submission_data['csa_user'])) {
                 return Access::resolve_enabled_user_id($submission_data['csa_user']);
             }
-            if (!empty($submission_data['csa_username'])) {
+            if (!empty($submission_data['csa_username']) && !Access::is_anyone_username($submission_data['csa_username'])) {
                 return Access::resolve_enabled_user_id($submission_data['csa_username']);
             }
         }

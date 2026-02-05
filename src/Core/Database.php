@@ -585,6 +585,19 @@ class Database {
             $wpdb->query($alter_sql);
         }
 
+        // Guard against duplicate bookings for the same user/date/time.
+        if ($user_id && $user_id > 0) {
+            $exists = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$this->appointments_table} WHERE appointment_date = %s AND appointment_time = %s AND user_id = %d",
+                $utc['date'],
+                $utc['time'],
+                $user_id
+            ));
+            if ($exists > 0) {
+                return false;
+            }
+        }
+
         $res = $wpdb->insert($this->appointments_table, $data, $formats);
         if ($res === false) {
             // Attempt to update existing row for this submission/date/time

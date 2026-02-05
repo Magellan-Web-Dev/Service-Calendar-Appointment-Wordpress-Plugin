@@ -58,6 +58,17 @@ const formatPropValue = (type, value) => {
     return `csa::${type} --> ${value}`;
 };
 
+const formatUserPropValue = (username, fullName) => {
+    if (!username) {
+        return '';
+    }
+    const name = (fullName || '').trim();
+    if (!name) {
+        return `csa::user --> ${username}`;
+    }
+    return `csa::user --> ${username} --> ${name}`;
+};
+
 const clearElementorPropValue = (form, prop) => {
     setElementorPropValue(form, prop, '');
 };
@@ -71,7 +82,16 @@ const getUsernameFromForm = (container) => {
     if (!form) {
         return '';
     }
+    const anyoneSelected = form.dataset.csaAnyoneSelected === '1';
+    const anyoneValue = (form.dataset.csaAnyoneValue || '').trim();
+    if (anyoneSelected && anyoneValue) {
+        return anyoneValue;
+    }
     const input = qs('input[name="csa_user"]', form);
+    const inputUsername = qs('input[name="csa_username"]', form);
+    if (inputUsername && (inputUsername.value || '').trim()) {
+        return (inputUsername.value || '').trim();
+    }
     if (!input) {
         return '';
     }
@@ -92,10 +112,10 @@ class UserShortcode {
             return;
         }
         if (this.prop) {
-            setElementorPropValue(this.form, this.prop, formatPropValue('user', this.username));
+            setElementorPropValue(this.form, this.prop, formatUserPropValue(this.username, this.username));
         }
         if (this.fieldProp) {
-            setFieldPropValue(this.fieldProp, formatPropValue('user', this.username));
+            setFieldPropValue(this.fieldProp, formatUserPropValue(this.username, this.username));
         }
     }
 }
@@ -106,27 +126,55 @@ class UserSelectShortcode {
         this.form = container.closest('form');
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
+        this.anyoneValue = container.dataset.anyoneValue || '';
         this.list = qsa('.csa-user-item', container);
         this.select = qs('.csa-user-select', container);
         this.hidden = qs('.csa-user-hidden', container);
         this.hiddenForm = qs('.csa-user-hidden-form', container);
+        this.hiddenUsername = qs('.csa-user-hidden-username', container);
+        this.hiddenUsernameForm = qs('.csa-user-hidden-username-form', container);
     }
 
     init() {
         if (!this.list.length && !this.select) {
             return;
         }
+        if (this.form && this.anyoneValue) {
+            this.form.dataset.csaAnyoneValue = this.anyoneValue;
+        }
+        if (this.form && this.container && this.container.dataset.autoAnyone === '1') {
+            this.form.dataset.csaAutoAnyone = '1';
+        }
+        if (this.form) {
+            if (this.prop) {
+                this.form.dataset.csaUserProp = this.prop;
+            }
+            if (this.fieldProp) {
+                this.form.dataset.csaUserFieldProp = this.fieldProp;
+            }
+        }
 
         this.list.forEach((item) => {
-            on(item, 'click', () => this.selectUser(item.dataset.username || ''));
+            on(item, 'click', () => this.selectUser(item.dataset.username || '', item.dataset.fullName || ''));
         });
 
         if (this.select) {
-            on(this.select, 'change', () => this.selectUser(this.select.value || ''));
+            on(this.select, 'change', () => {
+                const option = this.select.options[this.select.selectedIndex];
+                const fullName = option ? (option.dataset.fullName || '') : '';
+                this.selectUser(this.select.value || '', fullName);
+            });
+        }
+
+        if (this.form && this.form.dataset.csaAutoAnyone === '1') {
+            const autoValue = (this.form.dataset.csaAnyoneValue || '').trim();
+            if (autoValue) {
+                this.selectUser(autoValue, 'Anyone');
+            }
         }
     }
 
-    selectUser(username) {
+    selectUser(username, fullName = '') {
         if (!username) {
             this.list.forEach((entry) => {
                 entry.classList.remove('selected');
@@ -143,6 +191,16 @@ class UserSelectShortcode {
             }
             if (this.hiddenForm) {
                 this.hiddenForm.value = '';
+            }
+            if (this.hiddenUsername) {
+                this.hiddenUsername.value = '';
+            }
+            if (this.hiddenUsernameForm) {
+                this.hiddenUsernameForm.value = '';
+            }
+            if (this.form) {
+                delete this.form.dataset.csaAnyoneSelected;
+                delete this.form.dataset.csaResolvedUser;
             }
             if (this.prop) {
                 clearElementorPropValue(this.form, this.prop);
@@ -167,6 +225,9 @@ class UserSelectShortcode {
             if (radio) {
                 radio.checked = true;
             }
+            if (!fullName && match.dataset.fullName) {
+                fullName = match.dataset.fullName;
+            }
         }
         if (this.select && this.select.value !== username) {
             this.select.value = username;
@@ -177,11 +238,27 @@ class UserSelectShortcode {
         if (this.hiddenForm) {
             this.hiddenForm.value = username;
         }
+        if (this.hiddenUsername) {
+            this.hiddenUsername.value = username;
+        }
+        if (this.hiddenUsernameForm) {
+            this.hiddenUsernameForm.value = username;
+        }
+        if (this.form) {
+            if (this.anyoneValue && username === this.anyoneValue) {
+                this.form.dataset.csaAnyoneSelected = '1';
+                delete this.form.dataset.csaResolvedUser;
+            } else {
+                delete this.form.dataset.csaAnyoneSelected;
+                delete this.form.dataset.csaResolvedUser;
+            }
+        }
+        const propValue = fullName || username;
         if (this.prop) {
-            setElementorPropValue(this.form, this.prop, formatPropValue('user', username));
+            setElementorPropValue(this.form, this.prop, formatUserPropValue(username, propValue));
         }
         if (this.fieldProp) {
-            setFieldPropValue(this.fieldProp, formatPropValue('user', username));
+            setFieldPropValue(this.fieldProp, formatUserPropValue(username, propValue));
         }
         if (this.form) {
             const event = new CustomEvent('csa:userChanged', {
@@ -357,6 +434,7 @@ class TimeShortcode {
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
         this.username = container.dataset.user || getUsernameFromForm(container);
+        this.anyoneValue = this.form ? (this.form.dataset.csaAnyoneValue || '') : '';
         this.selectLabel = (container.dataset.label || '').trim() || 'Select';
         this.calendar = qs('.csa-calendar-widget', container);
         this.calendarWrapper = qs('.csa-appointment-calendar', container);
@@ -372,6 +450,9 @@ class TimeShortcode {
         this.currentYear = today.getFullYear();
         this.selectedDate = '';
         this.availableDays = new Set();
+        this.resolveToken = 0;
+        this.resolveInFlight = false;
+        this.anyoneResolvedUsers = {};
     }
 
     init() {
@@ -446,6 +527,7 @@ class TimeShortcode {
 
     resetSelection() {
         this.selectedDate = '';
+        this.anyoneResolvedUsers = {};
         if (this.hiddenDate) {
             this.hiddenDate.value = '';
         }
@@ -461,6 +543,7 @@ class TimeShortcode {
         if (this.fieldProp) {
             clearFieldPropValue(this.fieldProp);
         }
+        this.resetResolvedUser();
         if (this.timeList) {
             qsa('.csa-time-option', this.timeList).forEach((option) => option.classList.remove('selected'));
         }
@@ -596,6 +679,7 @@ class TimeShortcode {
         if (this.fieldProp) {
             clearFieldPropValue(this.fieldProp);
         }
+        this.resetResolvedUser();
         this.updateTimeSelectState('Select a day first', true);
         this.loadAvailableDays();
     }
@@ -620,6 +704,9 @@ class TimeShortcode {
             return;
         }
 
+        if (this.calendarWrapper) {
+            this.calendarWrapper.classList.add('csa-loading');
+        }
         let monthVal = `${this.currentYear}-${String(this.currentMonth + 1).padStart(2, '0')}`;
         try {
             const response = await postAjax(this.config.ajax_url, {
@@ -658,6 +745,9 @@ class TimeShortcode {
         this.renderCalendar();
         this.updateCalendarDisabledState();
         this.updateTimeNotificationState();
+        if (this.calendarWrapper) {
+            this.calendarWrapper.classList.remove('csa-loading');
+        }
     }
 
     async findNextAvailableMonthByDays(durationSeconds) {
@@ -715,6 +805,7 @@ class TimeShortcode {
         if (this.fieldProp) {
             clearFieldPropValue(this.fieldProp);
         }
+        this.resetResolvedUser();
 
         this.renderCalendar();
         this.updateTimeNotificationState();
@@ -728,6 +819,9 @@ class TimeShortcode {
             return;
         }
 
+        if (this.timeField) {
+            this.timeField.classList.add('csa-loading');
+        }
         this.updateTimeSelectState('Loading...', true);
         try {
             const response = await postAjax(this.config.ajax_url, {
@@ -738,7 +832,22 @@ class TimeShortcode {
             });
 
             if (response && response.success && response.data && Array.isArray(response.data.times)) {
-                const times = response.data.times;
+                let times = response.data.times;
+                this.anyoneResolvedUsers = {};
+                if (this.isAnyoneSelected() && times.length) {
+                    const resolved = await this.resolveAnyoneTimes(dateString, durationSeconds, times);
+                    if (Array.isArray(resolved)) {
+                        times = resolved;
+                        times.forEach((entry) => {
+                            if (entry && entry.value && entry.username) {
+                                this.anyoneResolvedUsers[entry.value] = {
+                                    username: entry.username,
+                                    fullName: entry.full_name || '',
+                                };
+                            }
+                        });
+                    }
+                }
                 if (times.length === 0) {
                     this.updateTimeSelectState('No times available', true);
                 } else {
@@ -768,9 +877,32 @@ class TimeShortcode {
         } catch (error) {
             this.updateTimeSelectState('Error loading times', true);
         }
+        if (this.timeField) {
+            this.timeField.classList.remove('csa-loading');
+        }
+    }
+
+    async resolveAnyoneTimes(dateString, durationSeconds, times) {
+        try {
+            const response = await postAjax(this.config.ajax_url, {
+                action: 'csa_resolve_anyone_times',
+                date: dateString,
+                duration_seconds: durationSeconds,
+                times: JSON.stringify(times),
+            });
+            if (response && response.success && response.data && Array.isArray(response.data.times)) {
+                return response.data.times;
+            }
+        } catch (error) {
+            // fall back to empty list
+        }
+        return [];
     }
 
     handleTimeSelect(target) {
+        if (this.resolveInFlight || (this.timeField && this.timeField.classList.contains('csa-field-disabled'))) {
+            return;
+        }
         const timeVal = target
             ? (target.dataset.value || '')
             : (this.timeSelect ? this.timeSelect.value : '');
@@ -803,6 +935,219 @@ class TimeShortcode {
         }
         if (this.fieldProp) {
             setFieldPropValue(this.fieldProp, formatPropValue('time', composite));
+        }
+
+        if (this.isAnyoneSelected()) {
+            const resolved = this.anyoneResolvedUsers[timeVal];
+            if (resolved && resolved.username) {
+                this.setResolvedUser(resolved.username, resolved.fullName || '');
+            } else {
+                this.resetResolvedUser();
+                this.setTimeSelectionDisabled(true);
+                this.resolveAnyoneUser(this.selectedDate, timeVal);
+            }
+        }
+    }
+
+    isAnyoneSelected() {
+        if (!this.form) {
+            return false;
+        }
+        return this.form.dataset.csaAnyoneSelected === '1' && !!(this.form.dataset.csaAnyoneValue || '');
+    }
+
+    setResolvedUser(username, fullName = '') {
+        if (!this.form || !username) {
+            return;
+        }
+        const hidden = qs('input[name="csa_user"]', this.form);
+        const hiddenForm = qs('input[name="form_fields[csa_user]"]', this.form);
+        const hiddenUsername = qs('input[name="csa_username"]', this.form);
+        const hiddenUsernameForm = qs('input[name="form_fields[csa_username]"]', this.form);
+        if (hidden) {
+            hidden.value = username;
+        }
+        if (hiddenForm) {
+            hiddenForm.value = username;
+        }
+        if (hiddenUsername) {
+            hiddenUsername.value = username;
+        }
+        if (hiddenUsernameForm) {
+            hiddenUsernameForm.value = username;
+        }
+        const userProp = this.form.dataset.csaUserProp || '';
+        const userFieldProp = this.form.dataset.csaUserFieldProp || '';
+        const propValue = fullName || username;
+        if (userProp) {
+            setElementorPropValue(this.form, userProp, formatUserPropValue(username, propValue));
+        }
+        if (userFieldProp) {
+            setFieldPropValue(userFieldProp, formatUserPropValue(username, propValue));
+        }
+        this.form.dataset.csaResolvedUser = username;
+    }
+
+    clearUserForResolve() {
+        if (!this.form) {
+            return;
+        }
+        const hidden = qs('input[name="csa_user"]', this.form);
+        const hiddenForm = qs('input[name="form_fields[csa_user]"]', this.form);
+        const hiddenUsername = qs('input[name="csa_username"]', this.form);
+        const hiddenUsernameForm = qs('input[name="form_fields[csa_username]"]', this.form);
+        if (hidden) {
+            hidden.value = '';
+        }
+        if (hiddenForm) {
+            hiddenForm.value = '';
+        }
+        if (hiddenUsername) {
+            hiddenUsername.value = '';
+        }
+        if (hiddenUsernameForm) {
+            hiddenUsernameForm.value = '';
+        }
+        const userProp = this.form.dataset.csaUserProp || '';
+        const userFieldProp = this.form.dataset.csaUserFieldProp || '';
+        if (userProp) {
+            setElementorPropValue(this.form, userProp, formatUserPropValue('', ''));
+        }
+        if (userFieldProp) {
+            setFieldPropValue(userFieldProp, formatUserPropValue('', ''));
+        }
+        delete this.form.dataset.csaResolvedUser;
+    }
+
+    resetResolvedUser() {
+        if (!this.form || !this.isAnyoneSelected()) {
+            return;
+        }
+        const anyoneValue = (this.form.dataset.csaAnyoneValue || '').trim();
+        if (!anyoneValue) {
+            return;
+        }
+        const hidden = qs('input[name="csa_user"]', this.form);
+        const hiddenForm = qs('input[name="form_fields[csa_user]"]', this.form);
+        const hiddenUsername = qs('input[name="csa_username"]', this.form);
+        const hiddenUsernameForm = qs('input[name="form_fields[csa_username]"]', this.form);
+        if (hidden) {
+            hidden.value = anyoneValue;
+        }
+        if (hiddenForm) {
+            hiddenForm.value = anyoneValue;
+        }
+        if (hiddenUsername) {
+            hiddenUsername.value = anyoneValue;
+        }
+        if (hiddenUsernameForm) {
+            hiddenUsernameForm.value = anyoneValue;
+        }
+        const userProp = this.form.dataset.csaUserProp || '';
+        const userFieldProp = this.form.dataset.csaUserFieldProp || '';
+        if (userProp) {
+            setElementorPropValue(this.form, userProp, formatUserPropValue(anyoneValue, 'Anyone'));
+        }
+        if (userFieldProp) {
+            setFieldPropValue(userFieldProp, formatUserPropValue(anyoneValue, 'Anyone'));
+        }
+        delete this.form.dataset.csaResolvedUser;
+    }
+
+    async resolveAnyoneUser(dateStr, timeStr) {
+        const durationSeconds = this.getDurationSeconds();
+        if (!durationSeconds) {
+            return;
+        }
+        this.clearUserForResolve();
+        this.resolveInFlight = true;
+        const token = ++this.resolveToken;
+        try {
+            const response = await postAjax(this.config.ajax_url, {
+                action: 'csa_resolve_anyone_user',
+                date: dateStr,
+                time: timeStr,
+                duration_seconds: durationSeconds,
+            });
+            if (token !== this.resolveToken) {
+                return;
+            }
+            if (response && response.success && response.data && response.data.username) {
+                this.setResolvedUser(response.data.username, response.data.full_name || '');
+                this.setTimeSelectionDisabled(false);
+                return;
+            }
+        } catch (error) {
+            // ignore and fall through
+        }
+        if (this.hiddenTime) {
+            this.hiddenTime.value = '';
+        }
+        if (this.composite) {
+            this.composite.value = '';
+        }
+        if (this.timeSelect) {
+            this.timeSelect.value = '';
+        }
+        if (this.timeList) {
+            qsa('.csa-time-option', this.timeList).forEach((option) => option.classList.remove('selected'));
+        }
+        if (this.timeNotification) {
+            this.timeNotification.textContent = 'That time is no longer available. Please select another.';
+        }
+        this.removeTimeOption(timeStr);
+        this.resolveInFlight = false;
+        this.setTimeSelectionDisabled(false);
+    }
+
+    removeTimeOption(timeStr) {
+        if (!timeStr) {
+            return;
+        }
+        const normalized = timeStr.slice(0, 5);
+        if (this.timeList) {
+            qsa('.csa-time-option', this.timeList).forEach((option) => {
+                if ((option.dataset.value || '') === normalized) {
+                    option.remove();
+                }
+            });
+            if (this.timeList.children.length === 0) {
+                this.updateTimeSelectState('No times available', true);
+            }
+        }
+        if (this.timeSelect) {
+            qsa('option', this.timeSelect).forEach((option) => {
+                if ((option.value || '') === normalized) {
+                    option.remove();
+                }
+            });
+            if (this.timeSelect.options.length <= 1) {
+                this.timeSelect.value = '';
+                this.timeSelect.disabled = true;
+            }
+        }
+    }
+
+    setTimeSelectionDisabled(disabled) {
+        if (this.timeList) {
+            this.timeList.classList.toggle('csa-field-disabled', !!disabled);
+        }
+        if (this.timeSelect) {
+            this.timeSelect.disabled = !!disabled;
+        }
+        if (this.timeField) {
+            this.timeField.classList.toggle('csa-field-disabled', !!disabled);
+        }
+        if (!disabled) {
+            this.resolveInFlight = false;
+            if (this.isAnyoneSelected()) {
+                if (this.selectedDate && this.hiddenTime && this.hiddenTime.value && !this.form.dataset.csaResolvedUser) {
+                    const timeVal = this.hiddenTime.value;
+                    this.resolveAnyoneUser(this.selectedDate, timeVal);
+                } else if (!this.hiddenTime || !this.hiddenTime.value) {
+                    this.resetResolvedUser();
+                }
+            }
         }
     }
 

@@ -33,6 +33,7 @@ class ShortcodesPage {
             <p><?php esc_html_e('For user-select bookings, place these in order:', $text_domain); ?></p>
             <ol>
                 <li><?php esc_html_e('User selection', $text_domain); ?> — <code>[csa_appointment_field type="user_select"]</code></li>
+                <li><?php esc_html_e('User selection (with Anyone)', $text_domain); ?> — <code>[csa_appointment_field type="user_anyone"]</code></li>
                 <li><?php esc_html_e('Service selection', $text_domain); ?> — <code>[csa_appointment_field type="service_select"]</code></li>
                 <li><?php esc_html_e('Calendar and time', $text_domain); ?> — <code>[csa_appointment_field type="time"]</code></li>
             </ol>
@@ -54,8 +55,18 @@ class ShortcodesPage {
                     </tr>
                     <tr>
                         <td><code>user_select</code></td>
-                        <td><?php esc_html_e('Renders the user list and dropdown. Required when you want the visitor to choose a user.', $text_domain); ?></td>
+                        <td><?php esc_html_e('Renders the user list and dropdown. Required when you want the visitor to choose a user. If only one user is enabled, it auto-selects and hides the list.', $text_domain); ?></td>
                         <td><code>[csa_appointment_field type="user_select"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>user_anyone</code></td>
+                        <td><?php esc_html_e('Same as user_select but includes the "Anyone" option.', $text_domain); ?></td>
+                        <td><code>[csa_appointment_field type="user_anyone"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>user_anyone_only</code></td>
+                        <td><?php esc_html_e('Hidden version of user_anyone. Auto-selects "Anyone" and resolves a specific user when a time is chosen.', $text_domain); ?></td>
+                        <td><code>[csa_appointment_field type="user_anyone_only"]</code></td>
                     </tr>
                     <tr>
                         <td><code>service_select</code></td>
@@ -90,7 +101,7 @@ class ShortcodesPage {
                     <tr>
                         <td><code>type</code></td>
                         <td><?php esc_html_e('All', $text_domain); ?></td>
-                        <td><?php esc_html_e('Controls which UI component is rendered: user, user_select, service_select, service, or time.', $text_domain); ?></td>
+                        <td><?php esc_html_e('Controls which UI component is rendered: user, user_select, user_anyone, user_anyone_only, service_select, service, or time. Invalid values return an error message.', $text_domain); ?></td>
                     </tr>
                     <tr>
                         <td><code>user</code></td>
@@ -123,6 +134,8 @@ class ShortcodesPage {
             <h2><?php esc_html_e('Examples', $text_domain); ?></h2>
             <ul>
                 <li><code>[csa_appointment_field type="user_select"]</code></li>
+                <li><code>[csa_appointment_field type="user_anyone"]</code></li>
+                <li><code>[csa_appointment_field type="user_anyone_only"]</code></li>
                 <li><code>[csa_appointment_field type="service_select" elementor_prop="service_field_id"]</code></li>
                 <li><code>[csa_appointment_field type="service" service="intro-consult" elementor_prop="service_field_id"]</code></li>
                 <li><code>[csa_appointment_field type="time" elementor_prop="appointment_field_id"]</code></li>

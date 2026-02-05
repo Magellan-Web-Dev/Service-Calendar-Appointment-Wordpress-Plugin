@@ -81,6 +81,12 @@ class Handlers {
         add_action('wp_ajax_nopriv_csa_get_available_months', [$this, 'get_available_months']);
         add_action('wp_ajax_csa_get_available_days', [$this, 'get_available_days']);
         add_action('wp_ajax_nopriv_csa_get_available_days', [$this, 'get_available_days']);
+        add_action('wp_ajax_csa_resolve_anyone_user', [$this, 'resolve_anyone_user']);
+        add_action('wp_ajax_nopriv_csa_resolve_anyone_user', [$this, 'resolve_anyone_user']);
+        add_action('wp_ajax_csa_filter_anyone_times', [$this, 'filter_anyone_times']);
+        add_action('wp_ajax_nopriv_csa_filter_anyone_times', [$this, 'filter_anyone_times']);
+        add_action('wp_ajax_csa_resolve_anyone_times', [$this, 'resolve_anyone_times']);
+        add_action('wp_ajax_nopriv_csa_resolve_anyone_times', [$this, 'resolve_anyone_times']);
         add_action('wp_ajax_csa_reschedule_appointment', [$this, 'reschedule_appointment']);
         add_action('wp_ajax_csa_create_custom_appointment', [$this, 'create_custom_appointment']);
     }
@@ -92,7 +98,6 @@ class Handlers {
      */
     public function get_day_details() {
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[CSA] get_day_details hit. action=' . (isset($_REQUEST['action']) ? $_REQUEST['action'] : 'none'));
         }
         $prev_handler = set_error_handler(function ($severity, $message, $file, $line) {
             throw new \ErrorException($message, 0, $severity, $file, $line);
@@ -101,7 +106,6 @@ class Handlers {
         try {
             if (!check_ajax_referer(self::NONCE_ACTION, 'nonce', false)) {
                 if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('[CSA] get_day_details invalid nonce.');
                 }
                 wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
             }
@@ -115,13 +119,6 @@ class Handlers {
             if (!$is_admin) {
                 if (!$is_enabled_user || (!$user_id || (int) $user_id !== (int) $current_user_id)) {
                     if (defined('WP_DEBUG') && WP_DEBUG) {
-                        error_log(sprintf(
-                            '[CSA] get_day_details unauthorized. current_user=%d resolved_user=%s enabled=%s date=%s',
-                            (int) $current_user_id,
-                            $user_id === null ? 'null' : (string) $user_id,
-                            $is_enabled_user ? 'yes' : 'no',
-                            $date
-                        ));
                     }
                     wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
                 }
@@ -140,7 +137,6 @@ class Handlers {
             $message = __('Error loading day details.', self::TEXT_DOMAIN);
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 $message .= ' ' . $e->getMessage();
-                error_log('[CSA] get_day_details exception: ' . $e->getMessage());
             }
             wp_send_json_error(['message' => $message]);
         }
@@ -434,6 +430,8 @@ class Handlers {
             wp_send_json_error(['message' => __('Appointment not found', self::TEXT_DOMAIN)]);
         }
 
+        $appointment_user_id = isset($appt['user_id']) ? intval($appt['user_id']) : $this->resolve_request_user_id(true);
+
         $service_duration_map = $this->get_service_duration_map();
         $appointment = [
             'time' => isset($appt['appointment_time']) ? $appt['appointment_time'] : null,
@@ -448,20 +446,19 @@ class Handlers {
             wp_send_json_error(['message' => __('Unable to determine service duration for this appointment.', self::TEXT_DOMAIN)]);
         }
 
-        $weekly = $db->get_weekly_availability($user_id);
-        $holiday_availability = $db->get_holiday_availability($user_id);
+        $weekly = $db->get_weekly_availability($appointment_user_id);
+        $holiday_availability = $db->get_holiday_availability($appointment_user_id);
         $dow = date('w', strtotime($date));
         $default_hours = isset($weekly[$dow]) ? $weekly[$dow] : [];
-        $overrides = $db->get_overrides_for_date($date, $user_id);
+        $overrides = $db->get_overrides_for_date($date, $appointment_user_id);
         $holiday_key = Holidays::get_us_holiday_key_for_date($date);
         $holiday_enabled = $holiday_key && in_array($holiday_key, $holiday_availability, true);
         $holiday_closed = $holiday_key && !$holiday_enabled;
 
         $hours = $this->get_business_hours();
         $hours_set = array_fill_keys($hours, true);
-        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date, $user_id));
+        $blocked_set = $this->build_time_set($db->get_blocked_slots_for_date($date, $appointment_user_id));
 
-        $appointment_user_id = isset($appt['user_id']) ? intval($appt['user_id']) : $this->resolve_request_user_id(true);
         $submissions = Submissions::get_instance();
         $appointments = $submissions->get_appointments_for_date($date, $appointment_user_id);
         if (!is_array($appointments)) {
@@ -476,6 +473,20 @@ class Handlers {
         }
         $booked_set = $this->build_booked_set($filtered, $service_duration_map);
         $slots_needed = $this->get_slots_needed($duration_seconds);
+
+        // If rescheduling within the same date, ignore the appointment's current blocked slots.
+        $current_date = isset($appointment['date']) ? (string) $appointment['date'] : '';
+        if ($current_date === $date) {
+            $current_start = isset($appointment['time']) ? (string) $appointment['time'] : '';
+            $current_start = $this->normalize_time_value($current_start);
+            if ($current_start !== '') {
+                $current_slots = $this->build_slot_times_for_duration($current_start, $duration_seconds);
+                foreach ($current_slots as $slot_time) {
+                    unset($blocked_set[$slot_time]);
+                }
+            }
+        }
+
         if (!$this->is_time_range_available($date, $time, $slots_needed, $default_hours, $overrides, $holiday_closed, $blocked_set, $booked_set, $hours_set)) {
             wp_send_json_error(['message' => __('That date and time is not available for this appointment.', self::TEXT_DOMAIN)]);
         }
@@ -688,17 +699,18 @@ class Handlers {
     public function get_available_times() {
         $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
         $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $username = isset($_POST['user']) ? sanitize_text_field($_POST['user']) : '';
+        $is_anyone = Access::is_anyone_username($username);
         $user_id = $this->resolve_request_user_id(true);
 
         if (empty($date)) {
             wp_send_json_error(['message' => __('Invalid date', self::TEXT_DOMAIN)]);
         }
-        if (!empty($_POST['user']) && !$user_id) {
+        if (!empty($_POST['user']) && !$user_id && !$is_anyone) {
             wp_send_json_error(['message' => __('Invalid user for booking.', self::TEXT_DOMAIN)]);
         }
 
         if (Multisite::is_child()) {
-            $username = isset($_POST['user']) ? sanitize_text_field($_POST['user']) : '';
             $response = Multisite::fetch_master_available_times($date, $duration_seconds, $username);
             if (is_wp_error($response)) {
                 wp_send_json_error(['message' => $response->get_error_message()]);
@@ -707,7 +719,11 @@ class Handlers {
             wp_send_json_success(['times' => $times]);
         }
 
-        $available_times = $this->build_available_times($date, $duration_seconds, $user_id);
+        if ($is_anyone) {
+            $available_times = $this->build_available_times_anyone($date, $duration_seconds);
+        } else {
+            $available_times = $this->build_available_times($date, $duration_seconds, $user_id);
+        }
         wp_send_json_success(['times' => $available_times]);
     }
 
@@ -853,17 +869,18 @@ class Handlers {
     public function get_available_days() {
         $month = isset($_POST['month']) ? sanitize_text_field($_POST['month']) : '';
         $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $username = isset($_POST['user']) ? sanitize_text_field($_POST['user']) : '';
+        $is_anyone = Access::is_anyone_username($username);
         $user_id = $this->resolve_request_user_id(true);
         $slots_needed = $this->get_slots_needed($duration_seconds);
         if (empty($month) || !preg_match('/^\d{4}-\d{2}$/', $month)) {
             wp_send_json_error(['message' => __('Invalid month', self::TEXT_DOMAIN)]);
         }
-        if (!empty($_POST['user']) && !$user_id) {
+        if (!empty($_POST['user']) && !$user_id && !$is_anyone) {
             wp_send_json_error(['message' => __('Invalid user for booking.', self::TEXT_DOMAIN)]);
         }
 
         if (Multisite::is_child()) {
-            $username = isset($_POST['user']) ? sanitize_text_field($_POST['user']) : '';
             $response = Multisite::fetch_master_available_days($month, $duration_seconds, $username);
             if (is_wp_error($response)) {
                 wp_send_json_error(['message' => $response->get_error_message()]);
@@ -872,8 +889,332 @@ class Handlers {
             wp_send_json_success(['days' => $days]);
         }
 
-        $days = $this->build_available_days($month, $slots_needed, $user_id);
+        if ($is_anyone) {
+            $days = $this->build_available_days_anyone($month, $slots_needed);
+        } else {
+            $days = $this->build_available_days($month, $slots_needed, $user_id);
+        }
         wp_send_json_success(['days' => $days]);
+    }
+
+    /**
+     * AJAX: resolve a random available user for "anyone" selection.
+     *
+     * @return void
+     */
+    public function resolve_anyone_user() {
+        $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
+        $time = isset($_POST['time']) ? sanitize_text_field($_POST['time']) : '';
+        $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+
+        if (empty($date) || empty($time) || $duration_seconds <= 0) {
+            wp_send_json_error(['message' => __('Invalid parameters', self::TEXT_DOMAIN)]);
+        }
+
+        $time = strlen($time) >= 5 ? substr($time, 0, 5) : $time;
+        $available = $this->get_available_user_ids_for_slot($date, $time, $duration_seconds);
+        if (empty($available)) {
+            wp_send_json_error(['message' => __('That date and time is not available.', self::TEXT_DOMAIN)]);
+        }
+
+        $idx = random_int(0, count($available) - 1);
+        $user_id = $available[$idx];
+        $user = get_user_by('id', $user_id);
+        if (!$user) {
+            wp_send_json_error(['message' => __('That date and time is not available.', self::TEXT_DOMAIN)]);
+        }
+
+        wp_send_json_success([
+            'user_id' => $user_id,
+            'username' => $user->user_login,
+            'full_name' => Access::build_user_display_name($user),
+        ]);
+    }
+
+    /**
+     * AJAX: filter available times for "anyone" selection.
+     *
+     * @return void
+     */
+    public function filter_anyone_times() {
+        $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
+        $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $times_raw = isset($_POST['times']) ? wp_unslash($_POST['times']) : '';
+
+        if (empty($date) || $duration_seconds <= 0) {
+            wp_send_json_error(['message' => __('Invalid parameters', self::TEXT_DOMAIN)]);
+        }
+
+        $times = [];
+        if (is_string($times_raw) && $times_raw !== '') {
+            $decoded = json_decode($times_raw, true);
+            if (is_array($decoded)) {
+                $times = $decoded;
+            }
+        } elseif (is_array($times_raw)) {
+            $times = $times_raw;
+        }
+
+        if (!is_array($times)) {
+            wp_send_json_error(['message' => __('Invalid times data', self::TEXT_DOMAIN)]);
+        }
+
+        $filtered = [];
+        foreach ($times as $entry) {
+            $value = '';
+            $label = '';
+            if (is_array($entry)) {
+                $value = isset($entry['value']) ? (string) $entry['value'] : '';
+                $label = isset($entry['label']) ? (string) $entry['label'] : '';
+            } elseif (is_string($entry)) {
+                $value = $entry;
+            }
+            $value = strlen($value) >= 5 ? substr($value, 0, 5) : $value;
+            if ($value === '') {
+                continue;
+            }
+            if (empty($this->get_available_user_ids_for_slot($date, $value, $duration_seconds))) {
+                continue;
+            }
+            if ($label === '') {
+                $label = $this->format_time_label($date, $value);
+            }
+            $filtered[] = [
+                'value' => $value,
+                'label' => $label,
+            ];
+        }
+
+        wp_send_json_success(['times' => $filtered]);
+    }
+
+    /**
+     * AJAX: resolve available "anyone" times to a concrete user.
+     *
+     * @return void
+     */
+    public function resolve_anyone_times() {
+        $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : '';
+        $duration_seconds = isset($_POST['duration_seconds']) ? intval($_POST['duration_seconds']) : 0;
+        $times_raw = isset($_POST['times']) ? wp_unslash($_POST['times']) : '';
+
+        if (empty($date) || $duration_seconds <= 0) {
+            wp_send_json_error(['message' => __('Invalid parameters', self::TEXT_DOMAIN)]);
+        }
+
+        $times = [];
+        if (is_string($times_raw) && $times_raw !== '') {
+            $decoded = json_decode($times_raw, true);
+            if (is_array($decoded)) {
+                $times = $decoded;
+            }
+        } elseif (is_array($times_raw)) {
+            $times = $times_raw;
+        }
+
+        if (!is_array($times)) {
+            wp_send_json_error(['message' => __('Invalid times data', self::TEXT_DOMAIN)]);
+        }
+
+        $resolved = $this->resolve_anyone_times_for_date($date, $duration_seconds, $times);
+
+        wp_send_json_success(['times' => $resolved]);
+    }
+
+    /**
+     * Resolve available "anyone" times to a concrete user for a date.
+     *
+     * @param string $date
+     * @param int $duration_seconds
+     * @param array $times
+     * @return array
+     */
+    private function resolve_anyone_times_for_date($date, $duration_seconds, $times) {
+        $resolved = [];
+        foreach ($times as $entry) {
+            $value = '';
+            $label = '';
+            if (is_array($entry)) {
+                $value = isset($entry['value']) ? (string) $entry['value'] : '';
+                $label = isset($entry['label']) ? (string) $entry['label'] : '';
+            } elseif (is_string($entry)) {
+                $value = $entry;
+            }
+            $value = strlen($value) >= 5 ? substr($value, 0, 5) : $value;
+            if ($value === '') {
+                continue;
+            }
+            $available = $this->get_available_user_ids_for_slot($date, $value, $duration_seconds);
+            if (empty($available)) {
+                continue;
+            }
+            $idx = random_int(0, count($available) - 1);
+            $user_id = $available[$idx];
+            $user = get_user_by('id', $user_id);
+            if (!$user) {
+                continue;
+            }
+            if ($label === '') {
+                $label = $this->format_time_label($date, $value);
+            }
+            $resolved[] = [
+                'value' => $value,
+                'label' => $label,
+                'user_id' => $user_id,
+                'username' => $user->user_login,
+                'full_name' => Access::build_user_display_name($user),
+            ];
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Build available times for a date across all selectable users.
+     *
+     * @param string $date
+     * @param int $duration_seconds
+     * @return array
+     */
+    public function build_available_times_anyone($date, $duration_seconds) {
+        if (empty($this->get_selectable_user_ids())) {
+            return [];
+        }
+
+        $tz = $this->get_timezone_object();
+        $now = $tz ? new \DateTime('now', $tz) : new \DateTime();
+        $today = $now ? $now->format('Y-m-d') : date('Y-m-d');
+        if ($date < $today) {
+            return [];
+        }
+
+        $ordered = [];
+        $user_ids = $this->get_selectable_user_ids();
+        foreach ($this->get_business_hours() as $time) {
+            if ($date === $today && $now) {
+                $slot_dt = \DateTime::createFromFormat('Y-m-d H:i', $date . ' ' . $time, $now->getTimezone());
+                if ($slot_dt) {
+                    $cutoff = (clone $now)->modify('+2 hours');
+                    if ($slot_dt < $cutoff) {
+                        continue;
+                    }
+                }
+            }
+
+            if (! $this->is_any_user_available_for_time($date, $time, $duration_seconds, $user_ids)) {
+                continue;
+            }
+
+            $ordered[] = [
+                'value' => $time,
+                'label' => $this->format_time_label($date, $time),
+            ];
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Build available days for a month across all selectable users.
+     *
+     * @param string $month
+     * @param int $slots_needed
+     * @return array
+     */
+    public function build_available_days_anyone($month, $slots_needed, $duration_seconds = null) {
+        if (empty($this->get_selectable_user_ids())) {
+            return [];
+        }
+        list($year, $mon) = array_map('intval', explode('-', $month));
+
+        $tz = $this->get_timezone_object();
+        $now = $tz ? new \DateTime('now', $tz) : new \DateTime();
+        $today = $now ? $now->format('Y-m-d') : date('Y-m-d');
+
+        $dt = \DateTime::createFromFormat('!Y-n', "$year-$mon");
+        $days_in_month = (int)$dt->format('t');
+        if ($duration_seconds === null) {
+            $duration_seconds = max(0, (int) $slots_needed) * 1800;
+        } else {
+            $duration_seconds = max(0, (int) $duration_seconds);
+        }
+
+        $days = [];
+
+        for ($d = 1; $d <= $days_in_month; $d++) {
+            $dateStr = sprintf('%04d-%02d-%02d', $year, $mon, $d);
+            if ($dateStr < $today) {
+                continue;
+            }
+
+            $times = $this->build_available_times_anyone($dateStr, $duration_seconds);
+            if (empty($times)) {
+                continue;
+            }
+            $resolved = $this->resolve_anyone_times_for_date($dateStr, $duration_seconds, $times);
+            if (empty($resolved)) {
+                continue;
+            }
+            $days[] = [
+                'value' => sprintf('%02d', $d),
+                'label' => date('F j, Y', strtotime($dateStr)),
+            ];
+        }
+
+        return $days;
+    }
+
+    /**
+     * Get selectable user IDs (enabled users + admins).
+     *
+     * @return array
+     */
+    private function get_selectable_user_ids() {
+        $enabled_ids = Access::get_enabled_user_ids();
+        $admins = get_users([
+            'role' => 'administrator',
+            'fields' => ['ID'],
+        ]);
+        foreach ($admins as $admin) {
+            $enabled_ids[] = intval($admin->ID);
+        }
+        return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
+    }
+
+    /**
+     * Get selectable user IDs that are available for a slot.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $duration_seconds
+     * @return array
+     */
+    private function get_available_user_ids_for_slot($date, $time, $duration_seconds) {
+        $available = [];
+        foreach ($this->get_selectable_user_ids() as $user_id) {
+            if ($this->check_time_range_available($date, $time, $duration_seconds, $user_id)) {
+                $available[] = $user_id;
+            }
+        }
+        return $available;
+    }
+
+    /**
+     * Check if any selectable user can take a time range.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $duration_seconds
+     * @param array $user_ids
+     * @return bool
+     */
+    private function is_any_user_available_for_time($date, $time, $duration_seconds, $user_ids) {
+        foreach ($user_ids as $user_id) {
+            if ($this->check_time_range_available($date, $time, $duration_seconds, $user_id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1161,13 +1502,13 @@ class Handlers {
      */
     private function get_timezone_labels() {
         return [
-            'America/New_York' => 'Eastern (America/New York)',
-            'America/Chicago' => 'Central (America/Chicago)',
-            'America/Denver' => 'Mountain (America/Denver)',
-            'America/Phoenix' => 'Arizona (America/Phoenix)',
-            'America/Los_Angeles' => 'Pacific (America/Los Angeles)',
-            'America/Anchorage' => 'Alaska (America/Anchorage)',
-            'Pacific/Honolulu' => 'Hawaii (Pacific/Honolulu)',
+            'America/New_York' => 'Eastern',
+            'America/Chicago' => 'Central',
+            'America/Denver' => 'Mountain',
+            'America/Phoenix' => 'Arizona',
+            'America/Los_Angeles' => 'Pacific',
+            'America/Anchorage' => 'Alaska',
+            'Pacific/Honolulu' => 'Hawaii',
         ];
     }
 

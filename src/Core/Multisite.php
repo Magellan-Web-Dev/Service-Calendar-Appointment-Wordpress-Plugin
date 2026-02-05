@@ -187,7 +187,6 @@ class Multisite {
 
         if (is_wp_error($response)) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[CSA] request_master error: ' . $response->get_error_message());
             }
             return $response;
         }
@@ -198,7 +197,6 @@ class Multisite {
 
         if ($code < 200 || $code >= 300) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[CSA] request_master failed code=' . $code . ' url=' . $url . ' body=' . $raw);
             }
             $message = is_array($data) && isset($data['message']) ? (string) $data['message'] : __('Request failed.', 'calendar-service-appointments-form');
             return new \WP_Error('csa_multisite_request_failed', $message, ['status' => $code]);
@@ -206,7 +204,6 @@ class Multisite {
 
         if (!is_array($data)) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[CSA] request_master invalid response url=' . $url . ' body=' . $raw);
             }
             return new \WP_Error('csa_multisite_invalid_response', __('Invalid response from master.', 'calendar-service-appointments-form'));
         }

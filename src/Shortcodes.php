@@ -81,7 +81,7 @@ class Shortcodes {
      * @return string
      */
     public static function render_appointment_field($atts = []) {
-        // Accept attributes: type (service_select|service|time|user|user_select), label (string), elementor_prop (hidden field id), field_prop (target field id)
+        // Accept attributes: type (service_select|service|time|user|user_select|user_anyone|user_anyone_only), label (string), elementor_prop (hidden field id), field_prop (target field id)
         $atts = shortcode_atts([
             'type' => 'time',
             'label' => '',
@@ -92,23 +92,37 @@ class Shortcodes {
         ], $atts, self::SHORTCODE_TAG);
 
         $type = sanitize_text_field($atts['type']);
+        $include_anyone = false;
+        $auto_anyone = false;
+        $hide_user_list = false;
         $label = sanitize_text_field($atts['label']);
         $elementor_prop = sanitize_text_field($atts['elementor_prop']);
         $field_prop = sanitize_text_field($atts['field_prop']);
         $username = sanitize_text_field($atts['user']);
         $service_slug = sanitize_title($atts['service']);
 
+        $raw_type = $type;
         if ($type === 'services') {
             $type = 'service_select';
         }
+        if ($type === 'user_anyone') {
+            $type = 'user_select';
+            $include_anyone = true;
+        }
+        if ($type === 'user_anyone_only') {
+            $type = 'user_select';
+            $include_anyone = true;
+            $auto_anyone = true;
+            $hide_user_list = true;
+        }
         if (!in_array($type, ['service_select', 'service', 'time', 'user', 'user_select'], true)) {
-            $type = 'time';
+            return '<div class="csa-appointment-error">' . esc_html__('Invalid type attribute for appointment field shortcode.', self::TEXT_DOMAIN) . '</div>';
         }
         if ($type === 'user') {
             if ($username === '') {
                 return '<div class="csa-appointment-error">' . esc_html__('A valid user attribute (username) is required for this shortcode.', self::TEXT_DOMAIN) . '</div>';
             }
-            if (!Access::resolve_enabled_user_id($username)) {
+            if ($username !== Access::ANYONE_USERNAME && !Access::resolve_enabled_user_id($username)) {
                 return '<div class="csa-appointment-error">' . esc_html__('The specified user is not enabled to use this booking form.', self::TEXT_DOMAIN) . '</div>';
             }
         }
@@ -116,6 +130,7 @@ class Shortcodes {
         $services = [];
         $service = [];
         $users = [];
+        $anyone_value = '';
         if ($type === 'service_select' || $type === 'service') {
             $services = self::get_services_for_shortcode();
             if ($type === 'service') {
@@ -157,9 +172,29 @@ class Shortcodes {
                     }
                     $users[] = [
                         'username' => $user->user_login,
-                        'label' => $display . ' (' . $user->user_login . ')',
+                        'label' => $display,
+                        'full_name' => $display,
                     ];
                 }
+            }
+            if (!$include_anyone && count($users) === 1) {
+                $type = 'user';
+                $username = $users[0]['username'];
+                $hide_user_list = true;
+            }
+            if ($include_anyone && (count($users) > 1 || $auto_anyone)) {
+                $anyone_value = Access::ANYONE_USERNAME;
+                array_unshift($users, [
+                    'username' => $anyone_value,
+                    'label' => esc_html__('Anyone', self::TEXT_DOMAIN),
+                    'full_name' => esc_html__('Anyone', self::TEXT_DOMAIN),
+                ]);
+            }
+        }
+
+        if ($type === 'user' && $username !== '') {
+            if ($username !== Access::ANYONE_USERNAME && !Access::resolve_enabled_user_id($username)) {
+                return '<div class="csa-appointment-error">' . esc_html__('The specified user is not enabled to use this booking form.', self::TEXT_DOMAIN) . '</div>';
             }
         }
 
@@ -173,6 +208,9 @@ class Shortcodes {
             'service' => $service,
             'user' => $username,
             'users' => $users,
+            'anyone_value' => $anyone_value,
+            'auto_anyone' => $auto_anyone,
+            'hide_user_list' => $hide_user_list,
         ]);
     }
 

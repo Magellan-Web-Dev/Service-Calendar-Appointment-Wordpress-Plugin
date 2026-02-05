@@ -684,12 +684,12 @@ class Calendar {
      */
     private function get_timezone_options() {
         return [
-            'America/New_York' => 'Eastern (America/New York)',
-            'America/Chicago' => 'Central (America/Chicago)',
-            'America/Denver' => 'Mountain (America/Denver)',
-            'America/Phoenix' => 'Arizona (America/Phoenix)',
-            'America/Los_Angeles' => 'Pacific (America/Los Angeles)',
-            'America/Anchorage' => 'Alaska (America/Anchorage)',
+            'America/New_York' => 'Eastern',
+            'America/Chicago' => 'Central',
+            'America/Denver' => 'Mountain',
+            'America/Phoenix' => 'Arizona',
+            'America/Los_Angeles' => 'Pacific',
+            'America/Anchorage' => 'Alaska',
             'Pacific/Honolulu' => 'Hawaii (Pacific/Honolulu)',
         ];
     }

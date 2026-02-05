@@ -54,7 +54,7 @@ class CalendarPage {
             <h1><?php echo esc_html__($label, $text_domain); ?></h1>
             <div class="notice notice-info inline"><p style="font-weight: 600"><?php esc_html_e('Note: Appointments older than 3 months (based on appointment date/time) are automatically deleted daily by the system.', $text_domain); ?></p></div>
             <p style="width: min(120ch, 100%);">
-                <?php esc_html_e('For more information on how to setup servie appointments on a frontend form,', $text_domain); ?>
+                <?php esc_html_e('For more information on how to setup service appointments on a frontend form,', $text_domain); ?>
                 <a href="<?php echo esc_url($shortcodes_url); ?>"><?php esc_html_e('click here', $text_domain); ?></a>.
             </p>
 

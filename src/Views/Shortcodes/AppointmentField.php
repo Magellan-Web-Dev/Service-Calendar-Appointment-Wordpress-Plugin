@@ -29,8 +29,11 @@ class AppointmentField {
         $service = isset($context['service']) && is_array($context['service']) ? $context['service'] : [];
         $username = isset($context['user']) ? $context['user'] : '';
         $users = isset($context['users']) && is_array($context['users']) ? $context['users'] : [];
+        $anyone_value = isset($context['anyone_value']) ? $context['anyone_value'] : '';
+        $auto_anyone = !empty($context['auto_anyone']);
+        $hide_user_list = !empty($context['hide_user_list']);
 
-        $hidden_style = in_array($type, ['user', 'service'], true) ? ' style="display:none;"' : '';
+        $hidden_style = (in_array($type, ['user', 'service'], true) || $hide_user_list) ? ' style="display:none;"' : '';
         $html = '<div class="csa-appointment-field" data-type="' . esc_attr($type) . '"' . $hidden_style;
         if (!empty($elementor_prop)) {
             $html .= ' data-elementor-prop="' . esc_attr($elementor_prop) . '"';
@@ -43,6 +46,12 @@ class AppointmentField {
         }
         if (!empty($username)) {
             $html .= ' data-user="' . esc_attr($username) . '"';
+        }
+        if (!empty($anyone_value)) {
+            $html .= ' data-anyone-value="' . esc_attr($anyone_value) . '"';
+        }
+        if ($auto_anyone) {
+            $html .= ' data-auto-anyone="1"';
         }
         if ($type === 'service' && !empty($service)) {
             $service_title = isset($service['title']) ? $service['title'] : '';
@@ -144,11 +153,12 @@ class AppointmentField {
             foreach ($users as $index => $user) {
                 $user_label = isset($user['label']) ? $user['label'] : '';
                 $user_name = isset($user['username']) ? $user['username'] : '';
+                $user_full = isset($user['full_name']) ? $user['full_name'] : $user_label;
                 if ($user_label === '' || $user_name === '') {
                     continue;
                 }
                 $input_id = 'csa-user-' . intval($index) . '-' . wp_rand(1000, 9999);
-                $html .= '<li class="csa-user-item" data-username="' . esc_attr($user_name) . '">';
+                $html .= '<li class="csa-user-item" data-username="' . esc_attr($user_name) . '" data-full-name="' . esc_attr($user_full) . '">';
                 $html .= '<input type="radio" class="csa-user-radio" name="csa_user_select" id="' . esc_attr($input_id) . '" value="' . esc_attr($user_name) . '" hidden />';
                 $html .= '<h4>' . esc_html($user_label) . '</h4>';
                 $html .= '</li>';
@@ -158,14 +168,17 @@ class AppointmentField {
             foreach ($users as $user) {
                 $user_label = isset($user['label']) ? $user['label'] : '';
                 $user_name = isset($user['username']) ? $user['username'] : '';
+                $user_full = isset($user['full_name']) ? $user['full_name'] : $user_label;
                 if ($user_label === '' || $user_name === '') {
                     continue;
                 }
-                $html .= '<option value="' . esc_attr($user_name) . '">' . esc_html($user_label) . '</option>';
+                $html .= '<option value="' . esc_attr($user_name) . '" data-full-name="' . esc_attr($user_full) . '">' . esc_html($user_label) . '</option>';
             }
             $html .= '</select>';
             $html .= '<input type="hidden" name="csa_user" class="csa-user-hidden" value="" />';
             $html .= '<input type="hidden" name="form_fields[csa_user]" class="csa-user-hidden-form" value="" />';
+            $html .= '<input type="hidden" name="csa_username" class="csa-user-hidden-username" value="" />';
+            $html .= '<input type="hidden" name="form_fields[csa_username]" class="csa-user-hidden-username-form" value="" />';
             if (!empty($elementor_prop)) {
                 $prop_key = 'csa-field-' . $elementor_prop;
                 $html .= '<input type="hidden" name="' . esc_attr($prop_key) . '" id="' . esc_attr($prop_key) . '" class="csa-elementor-prop-hidden" value="" />';

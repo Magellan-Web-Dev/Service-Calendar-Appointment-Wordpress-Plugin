@@ -22,7 +22,7 @@ Shortcodes (frontend)
 Use `[csa_appointment_field]` in a page, template, or HTML/Raw HTML block.
 
 Required flow for user‑select bookings:
-1) user_select → 2) service_select → 3) calendar/time
+1) user_select or user_anyone → 2) service_select → 3) calendar/time
 
 Shortcode types
 - `type="user"`:
@@ -32,7 +32,15 @@ Shortcode types
 - `type="user_select"`:
   - Renders a user list + select dropdown that stay in sync.
   - Populates hidden user fields for booking and Elementor syncing.
+  - If only one user is enabled, it auto‑selects and hides the list.
   - Example: `[csa_appointment_field type="user_select"]`
+- `type="user_anyone"`:
+  - Same as `user_select` but includes the “Anyone” option.
+  - Example: `[csa_appointment_field type="user_anyone"]`
+- `type="user_anyone_only"`:
+  - Hidden version of `user_anyone`.
+  - Auto‑selects “Anyone” and resolves a specific user when a time is chosen.
+  - Example: `[csa_appointment_field type="user_anyone_only"]`
 - `type="service_select"`:
   - Service list with duration labels and descriptions.
   - Example: `[csa_appointment_field type="service_select"]`
@@ -43,6 +51,7 @@ Shortcode types
 - `type="time"`:
   - Calendar + time slots (list + select).
   - Example: `[csa_appointment_field type="time"]`
+Invalid `type` values return an error message.
 
 Elementor Pro syncing (optional)
 - Add `elementor_prop="field_id"` to any shortcode.
