@@ -43,6 +43,16 @@
     display: block;
 }
 
+.csa-user-placeholder,
+.csa-service-placeholder {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px dashed #ddd;
+    border-radius: 4px;
+    color: #666;
+    font-style: italic;
+}
+
 .csa-calendar-widget-header {
     display: flex;
     justify-content: space-between;

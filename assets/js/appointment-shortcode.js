@@ -51,6 +51,54 @@ const setFieldPropValue = (prop, value) => {
     target.dispatchEvent(new Event('change', { bubbles: true }));
 };
 
+const setPropValue = (form, prop, fieldProp, value) => {
+    if (prop) {
+        setElementorPropValue(form, prop, value);
+    }
+    if (fieldProp) {
+        setFieldPropValue(fieldProp, value);
+    }
+};
+
+const DURATION_LABELS = {
+    900: '15 minutes',
+    1800: '30 minutes',
+    2700: '45 minutes',
+    3600: '1 hour',
+    4500: '1 hour and 15 minutes',
+    5400: '1 hour and 30 minutes',
+    6300: '1 hour and 45 minutes',
+    7200: '2 hours',
+    8100: '2 hours and 15 minutes',
+    9000: '2 hours and 30 minutes',
+    9900: '2 hours and 45 minutes',
+    10800: '3 hours',
+    11700: '3 hours and 15 minutes',
+    12600: '3 hours and 30 minutes',
+    13500: '3 hours and 45 minutes',
+    14400: '4 hours',
+};
+
+const formatDurationLabel = (seconds) => {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+        return '';
+    }
+    if (DURATION_LABELS[seconds]) {
+        return DURATION_LABELS[seconds];
+    }
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) {
+        return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remaining = minutes % 60;
+    if (!remaining) {
+        return `${hours} hour${hours === 1 ? '' : 's'}`;
+    }
+    const minuteLabel = `${remaining} minute${remaining === 1 ? '' : 's'}`;
+    return `${hours} hour${hours === 1 ? '' : 's'} and ${minuteLabel}`;
+};
+
 const formatPropValue = (type, value) => {
     if (!value) {
         return '';
@@ -84,18 +132,38 @@ const getServiceSlugsForUser = (username) => {
     return [];
 };
 
-const getAnyUserServiceSlugs = () => {
+const getServiceUsersMap = () => {
     const config = window.csaAppointment || null;
     if (!config || !config.user_services) {
         return null;
     }
-    const union = new Set();
-    Object.values(config.user_services).forEach((slugs) => {
-        if (Array.isArray(slugs)) {
-            slugs.forEach((slug) => union.add(slug));
+    const map = {};
+    Object.entries(config.user_services).forEach(([username, slugs]) => {
+        if (!Array.isArray(slugs)) {
+            return;
         }
+        slugs.forEach((slug) => {
+            if (!slug) {
+                return;
+            }
+            if (!map[slug]) {
+                map[slug] = [];
+            }
+            map[slug].push(username);
+        });
     });
-    return Array.from(union);
+    return map;
+};
+
+const getServiceSlugFromForm = (container) => {
+    if (!container) {
+        return '';
+    }
+    const form = container.closest('form');
+    if (!form) {
+        return '';
+    }
+    return (form.dataset.csaServiceSlug || '').trim();
 };
 
 const clearElementorPropValue = (form, prop) => {
@@ -158,12 +226,14 @@ class UserSelectShortcode {
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
         this.anyoneValue = container.dataset.anyoneValue || '';
+        this.placeholder = qs('.csa-user-placeholder', container);
         this.list = qsa('.csa-user-item', container);
         this.select = qs('.csa-user-select', container);
         this.hidden = qs('.csa-user-hidden', container);
         this.hiddenForm = qs('.csa-user-hidden-form', container);
         this.hiddenUsername = qs('.csa-user-hidden-username', container);
         this.hiddenUsernameForm = qs('.csa-user-hidden-username-form', container);
+        this.serviceUsersMap = getServiceUsersMap();
     }
 
     init() {
@@ -203,6 +273,19 @@ class UserSelectShortcode {
                 this.selectUser(autoValue, 'Anyone');
             }
         }
+
+        if (this.form) {
+            on(this.form, 'csa:serviceChanged', () => {
+                const serviceSlug = getServiceSlugFromForm(this.container);
+                this.applyUserFilter(serviceSlug);
+                this.updateVisibility();
+                this.updateDisabledState();
+            });
+        }
+
+        this.applyUserFilter(getServiceSlugFromForm(this.container));
+        this.updateVisibility();
+        this.updateDisabledState();
     }
 
     selectUser(username, fullName = '') {
@@ -299,6 +382,134 @@ class UserSelectShortcode {
             this.form.dispatchEvent(event);
         }
     }
+
+    updateDisabledState() {
+        const serviceSlug = getServiceSlugFromForm(this.container);
+        const hasService = !!serviceSlug;
+        const hasUsers = this.list.some((item) => item.style.display !== 'none');
+        const disabled = !hasService || !hasUsers;
+        this.container.classList.toggle('csa-field-disabled', disabled);
+        if (this.select) {
+            this.select.disabled = disabled;
+        }
+        return !disabled;
+    }
+
+    updateVisibility() {
+        const serviceSlug = getServiceSlugFromForm(this.container);
+        const hasService = !!serviceSlug;
+        if (this.placeholder) {
+            if (!hasService) {
+                this.placeholder.style.display = '';
+            }
+        }
+        const listContainer = this.list.length ? this.list[0].closest('.csa-user-list') : null;
+        if (listContainer) {
+            listContainer.style.display = hasService ? '' : 'none';
+        }
+        if (this.select) {
+            this.select.style.display = hasService ? '' : 'none';
+        }
+    }
+
+    applyUserFilter(serviceSlug) {
+        if (!serviceSlug || !this.serviceUsersMap) {
+            this.list.forEach((item) => {
+                item.style.display = '';
+            });
+            if (this.select) {
+                Array.from(this.select.options).forEach((option) => {
+                    option.hidden = false;
+                });
+            }
+            if (this.placeholder) {
+                this.placeholder.textContent = 'Select a service';
+            }
+            return;
+        }
+
+        const allowedUsers = this.serviceUsersMap[serviceSlug] || [];
+        const allowedSet = new Set(allowedUsers);
+        let eligibleCount = 0;
+        this.list.forEach((item) => {
+            const username = (item.dataset.username || '').trim();
+            if (!username) {
+                item.style.display = 'none';
+                return;
+            }
+            if (this.anyoneValue && username === this.anyoneValue) {
+                item.style.display = 'none';
+                return;
+            }
+            const show = allowedSet.has(username);
+            item.style.display = show ? '' : 'none';
+            if (show) {
+                eligibleCount += 1;
+            }
+        });
+
+        if (this.select) {
+            Array.from(this.select.options).forEach((option) => {
+                const username = (option.value || '').trim();
+                if (!username || !serviceSlug) {
+                    option.hidden = false;
+                    return;
+                }
+                if (this.anyoneValue && username === this.anyoneValue) {
+                    option.hidden = true;
+                    return;
+                }
+                option.hidden = !allowedSet.has(username);
+            });
+        }
+
+        if (this.anyoneValue) {
+            const showAnyone = eligibleCount > 1;
+            this.list.forEach((item) => {
+                const username = (item.dataset.username || '').trim();
+                if (username === this.anyoneValue) {
+                    item.style.display = showAnyone ? '' : 'none';
+                }
+            });
+            if (this.select) {
+                Array.from(this.select.options).forEach((option) => {
+                    const username = (option.value || '').trim();
+                    if (username === this.anyoneValue) {
+                        option.hidden = !showAnyone;
+                    }
+                });
+            }
+        }
+
+        if (this.placeholder) {
+            if (eligibleCount === 0) {
+                this.placeholder.textContent = 'No users available for this service.';
+                this.placeholder.style.display = '';
+            } else {
+                this.placeholder.textContent = 'Select a service';
+                this.placeholder.style.display = 'none';
+            }
+        }
+
+        const current = this.hidden ? (this.hidden.value || '').trim() : '';
+        if (current && current !== this.anyoneValue && !allowedSet.has(current)) {
+            this.selectUser('');
+        }
+        if (current && current === this.anyoneValue && eligibleCount <= 1) {
+            this.selectUser('');
+        }
+
+        if (this.form && this.form.dataset.csaAutoAnyone === '1') {
+            if (eligibleCount === 1) {
+                const onlyUser = allowedUsers.find((user) => user);
+                if (onlyUser) {
+                    this.selectUser(onlyUser, '');
+                }
+            } else if (eligibleCount > 1 && this.anyoneValue) {
+                this.selectUser(this.anyoneValue, 'Anyone');
+            }
+        }
+    }
 }
 
 class ServiceShortcode {
@@ -307,12 +518,10 @@ class ServiceShortcode {
         this.form = container.closest('form');
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
-        this.username = getUsernameFromForm(container);
         this.items = qsa('.csa-service-item', container);
         this.list = qs('.csa-service-list', container);
         this.select = qs('.csa-service-select', container);
         this.placeholder = qs('.csa-service-placeholder', container);
-        this.anyoneAllowed = getAnyUserServiceSlugs();
     }
 
     init() {
@@ -344,17 +553,6 @@ class ServiceShortcode {
             this.selectService(preselected);
         }
 
-        if (this.form) {
-            on(this.form, 'csa:userChanged', () => {
-                const username = getUsernameFromForm(this.container);
-                this.applyServiceFilter(username);
-                this.updateVisibility();
-                this.updateDisabledState();
-                this.resetSelection();
-            });
-        }
-
-        this.applyServiceFilter(this.username);
         this.updateVisibility();
         this.updateDisabledState();
     }
@@ -364,6 +562,7 @@ class ServiceShortcode {
             return;
         }
         const title = item.dataset.title || '';
+        const slug = (item.dataset.serviceSlug || '').trim();
         const durationSeconds = parseInt(item.dataset.durationSeconds || '0', 10);
 
         this.items.forEach((entry) => entry.classList.remove('selected'));
@@ -380,8 +579,9 @@ class ServiceShortcode {
         if (this.form) {
             this.form.dataset.csaServiceDuration = Number.isFinite(durationSeconds) ? String(durationSeconds) : '0';
             this.form.dataset.csaServiceTitle = title;
+            this.form.dataset.csaServiceSlug = slug;
             const event = new CustomEvent('csa:serviceChanged', {
-                detail: { durationSeconds, title },
+                detail: { durationSeconds, title, slug },
                 bubbles: true,
             });
             this.form.dispatchEvent(event);
@@ -410,6 +610,7 @@ class ServiceShortcode {
         if (this.form) {
             this.form.dataset.csaServiceDuration = '0';
             this.form.dataset.csaServiceTitle = '';
+            this.form.dataset.csaServiceSlug = '';
         }
 
         if (this.prop) {
@@ -421,9 +622,8 @@ class ServiceShortcode {
     }
 
     updateDisabledState() {
-        const hasUser = !!getUsernameFromForm(this.container);
-        const hasServices = this.items.some((item) => item.style.display !== 'none');
-        const disabled = !hasUser || !hasServices;
+        const hasServices = this.items.length > 0;
+        const disabled = !hasServices;
         this.container.classList.toggle('csa-field-disabled', disabled);
         if (this.select) {
             this.select.disabled = disabled;
@@ -432,52 +632,14 @@ class ServiceShortcode {
     }
 
     updateVisibility() {
-        const hasUser = !!getUsernameFromForm(this.container);
         if (this.placeholder) {
-            this.placeholder.style.display = hasUser ? 'none' : '';
+            this.placeholder.style.display = 'none';
         }
         if (this.list) {
-            this.list.style.display = hasUser ? '' : 'none';
+            this.list.style.display = '';
         }
         if (this.select) {
-            this.select.style.display = hasUser ? '' : 'none';
-        }
-    }
-
-    applyServiceFilter(username) {
-        const isAnyone = (username || '').trim() === '__anyone__';
-        let allowed = null;
-        if (isAnyone) {
-            allowed = this.anyoneAllowed;
-        } else {
-            allowed = getServiceSlugsForUser(username);
-        }
-        if (allowed === null) {
-            this.items.forEach((item) => {
-                item.style.display = '';
-            });
-            if (this.select) {
-                Array.from(this.select.options).forEach((option) => {
-                    option.hidden = false;
-                });
-            }
-            return;
-        }
-        const allowedSet = new Set(allowed || []);
-        this.items.forEach((item) => {
-            const slug = (item.dataset.serviceSlug || '').trim();
-            const show = slug && allowedSet.has(slug);
-            item.style.display = show ? '' : 'none';
-        });
-        if (this.select) {
-            Array.from(this.select.options).forEach((option) => {
-                const slug = (option.dataset.serviceSlug || '').trim();
-                if (!slug) {
-                    option.hidden = false;
-                } else {
-                    option.hidden = !allowedSet.has(slug);
-                }
-            });
+            this.select.style.display = '';
         }
     }
 }
@@ -489,6 +651,7 @@ class ServiceFixedShortcode {
         this.prop = container.dataset.elementorProp || '';
         this.fieldProp = container.dataset.fieldProp || '';
         this.title = container.dataset.serviceTitle || '';
+        this.slug = container.dataset.serviceSlug || '';
         const rawDuration = parseInt(container.dataset.serviceDuration || '0', 10);
         this.durationSeconds = Number.isFinite(rawDuration) ? rawDuration : 0;
     }
@@ -501,8 +664,9 @@ class ServiceFixedShortcode {
         if (this.form) {
             this.form.dataset.csaServiceDuration = String(this.durationSeconds);
             this.form.dataset.csaServiceTitle = this.title;
+            this.form.dataset.csaServiceSlug = this.slug;
             const event = new CustomEvent('csa:serviceChanged', {
-                detail: { durationSeconds: this.durationSeconds, title: this.title },
+                detail: { durationSeconds: this.durationSeconds, title: this.title, slug: this.slug },
                 bubbles: true,
             });
             this.form.dispatchEvent(event);
@@ -514,6 +678,35 @@ class ServiceFixedShortcode {
         if (this.fieldProp) {
             setFieldPropValue(this.fieldProp, formatPropValue('service', this.title));
         }
+    }
+}
+
+class ServiceDurationShortcode {
+    constructor(container) {
+        this.container = container;
+        this.form = container.closest('form');
+        this.prop = container.dataset.elementorProp || '';
+        this.fieldProp = container.dataset.fieldProp || '';
+    }
+
+    init() {
+        if (!this.form || (!this.prop && !this.fieldProp)) {
+            return;
+        }
+        this.applyDuration();
+        on(this.form, 'csa:serviceChanged', () => {
+            this.applyDuration();
+        });
+    }
+
+    applyDuration() {
+        if (!this.form) {
+            return;
+        }
+        const raw = (this.form.dataset.csaServiceDuration || '').trim();
+        const duration = parseInt(raw, 10);
+        const value = formatDurationLabel(duration);
+        setPropValue(this.form, this.prop, this.fieldProp, value);
     }
 }
 
@@ -778,18 +971,18 @@ class TimeShortcode {
     async loadAvailableDays() {
         const durationSeconds = this.getDurationSeconds();
         const hasUser = !!getUsernameFromForm(this.container);
-        if (!hasUser) {
-            this.availableDays = new Set();
-            this.renderCalendar();
-            this.updateTimeSelectState('Select a user first', true);
-            this.updateCalendarDisabledState();
-            this.updateTimeNotificationState();
-            return;
-        }
         if (!durationSeconds) {
             this.availableDays = new Set();
             this.renderCalendar();
             this.updateTimeSelectState('Select a service first', true);
+            this.updateCalendarDisabledState();
+            this.updateTimeNotificationState();
+            return;
+        }
+        if (!hasUser) {
+            this.availableDays = new Set();
+            this.renderCalendar();
+            this.updateTimeSelectState('Select a user first', true);
             this.updateCalendarDisabledState();
             this.updateTimeNotificationState();
             return;
@@ -1296,6 +1489,9 @@ if (appointmentConfig) {
         const type = container.dataset.type || 'time';
         if (type === 'service_select' || type === 'services') {
             const instance = new ServiceShortcode(container);
+            instance.init();
+        } else if (type === 'service_duration') {
+            const instance = new ServiceDurationShortcode(container);
             instance.init();
         } else if (type === 'service') {
             const instance = new ServiceFixedShortcode(container);

@@ -32,9 +32,10 @@ class ShortcodesPage {
             <h2><?php esc_html_e('Recommended Flow', $text_domain); ?></h2>
             <p><?php esc_html_e('For user-select bookings, place these in order:', $text_domain); ?></p>
             <ol>
+                <li><?php esc_html_e('Service selection', $text_domain); ?> — <code>[csa_appointment_field type="service_select"]</code></li>
                 <li><?php esc_html_e('User selection', $text_domain); ?> — <code>[csa_appointment_field type="user_select"]</code></li>
                 <li><?php esc_html_e('User selection (with Anyone)', $text_domain); ?> — <code>[csa_appointment_field type="user_anyone"]</code></li>
-                <li><?php esc_html_e('Service selection', $text_domain); ?> — <code>[csa_appointment_field type="service_select"]</code></li>
+                <li><?php esc_html_e('Optional service duration prop (hidden)', $text_domain); ?> — <code>[csa_appointment_field type="service_duration" elementor_prop="duration_field_id"]</code></li>
                 <li><?php esc_html_e('Calendar and time', $text_domain); ?> — <code>[csa_appointment_field type="time"]</code></li>
             </ol>
 
@@ -79,6 +80,11 @@ class ShortcodesPage {
                         <td><code>[csa_appointment_field type="service" service="your-service-slug"]</code></td>
                     </tr>
                     <tr>
+                        <td><code>service_duration</code></td>
+                        <td><?php esc_html_e('Hidden helper that writes the selected service duration (seconds) into elementor_prop or field_prop.', $text_domain); ?></td>
+                        <td><code>[csa_appointment_field type="service_duration" elementor_prop="duration_field_id"]</code></td>
+                    </tr>
+                    <tr>
                         <td><code>time</code></td>
                         <td><?php esc_html_e('Shows the calendar and available time slots.', $text_domain); ?></td>
                         <td><code>[csa_appointment_field type="time"]</code></td>
@@ -101,7 +107,7 @@ class ShortcodesPage {
                     <tr>
                         <td><code>type</code></td>
                         <td><?php esc_html_e('All', $text_domain); ?></td>
-                        <td><?php esc_html_e('Controls which UI component is rendered: user, user_select, user_anyone, user_anyone_only, service_select, service, or time. Invalid values return an error message.', $text_domain); ?></td>
+                        <td><?php esc_html_e('Controls which UI component is rendered: user, user_select, user_anyone, user_anyone_only, service_select, service, service_duration, or time. Invalid values return an error message.', $text_domain); ?></td>
                     </tr>
                     <tr>
                         <td><code>user</code></td>
@@ -138,6 +144,7 @@ class ShortcodesPage {
                 <li><code>[csa_appointment_field type="user_anyone_only"]</code></li>
                 <li><code>[csa_appointment_field type="service_select" elementor_prop="service_field_id"]</code></li>
                 <li><code>[csa_appointment_field type="service" service="intro-consult" elementor_prop="service_field_id"]</code></li>
+                <li><code>[csa_appointment_field type="service_duration" elementor_prop="duration_field_id"]</code></li>
                 <li><code>[csa_appointment_field type="time" elementor_prop="appointment_field_id"]</code></li>
             </ul>
         </div>

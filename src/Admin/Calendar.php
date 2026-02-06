@@ -13,6 +13,7 @@ use CalendarServiceAppointmentsForm\Core\Access;
 use CalendarServiceAppointmentsForm\Core\Multisite;
 use CalendarServiceAppointmentsForm\Core\Submissions;
 use CalendarServiceAppointmentsForm\Views\Admin\CalendarPage;
+use CalendarServiceAppointmentsForm\Views\Admin\DeleteAppointmentsPage;
 use CalendarServiceAppointmentsForm\Views\Admin\OverviewPage;
 use CalendarServiceAppointmentsForm\Views\Admin\ServicesPage;
 use CalendarServiceAppointmentsForm\Views\Admin\ShortcodesPage;
@@ -50,6 +51,7 @@ class Calendar {
     public const USERS_MENU_SLUG = 'csa-users';
     public const SHORTCODES_MENU_SLUG = 'csa-shortcodes';
     public const OVERVIEW_MENU_SLUG = 'csa-overview';
+    public const DELETE_APPOINTMENTS_MENU_SLUG = 'csa-delete-appointments';
 
     /**
      * Admin script/style handle
@@ -73,6 +75,7 @@ class Calendar {
     public const LABEL_SERVICES = 'Services';
     public const LABEL_SHORTCODES = 'Shortcode Guide';
     public const LABEL_OVERVIEW = 'Overview';
+    public const LABEL_DELETE_APPOINTMENTS = 'Delete Appointments';
 
     /**
      * @var Calendar|null
@@ -99,6 +102,8 @@ class Calendar {
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
         add_action('admin_post_csa_save_services', [$this, 'handle_save_services']);
         add_action('admin_post_csa_save_users', [$this, 'handle_save_users']);
+        add_action('admin_post_csa_delete_user_appointments', [$this, 'handle_delete_user_appointments']);
+        add_action('admin_post_csa_delete_all_appointments', [$this, 'handle_delete_all_appointments']);
     }
 
     /**
@@ -171,6 +176,15 @@ class Calendar {
             self::SHORTCODES_MENU_SLUG,
             [$this, 'render_shortcodes_page']
         );
+
+        add_submenu_page(
+            self::MENU_SLUG,
+            __(self::LABEL_DELETE_APPOINTMENTS, self::TEXT_DOMAIN),
+            __(self::LABEL_DELETE_APPOINTMENTS, self::TEXT_DOMAIN),
+            'manage_options',
+            self::DELETE_APPOINTMENTS_MENU_SLUG,
+            [$this, 'render_delete_appointments_page']
+        );
     }
 
     /**
@@ -190,6 +204,7 @@ class Calendar {
             self::USERS_MENU_SLUG,
             self::SHORTCODES_MENU_SLUG,
             self::OVERVIEW_MENU_SLUG,
+            self::DELETE_APPOINTMENTS_MENU_SLUG,
         ];
         $is_plugin_page = false;
         if (is_string($hook)) {
@@ -424,6 +439,31 @@ class Calendar {
     }
 
     /**
+     * Render delete appointments page
+     *
+     * @return void
+     */
+    public function render_delete_appointments_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        $users = get_users(['orderby' => 'display_name', 'order' => 'ASC']);
+        $deleted_user = isset($_GET['csa_deleted_user']) ? intval($_GET['csa_deleted_user']) : 0;
+        $deleted_all = isset($_GET['csa_deleted_all']) ? intval($_GET['csa_deleted_all']) : 0;
+        $deleted_count = isset($_GET['csa_deleted_count']) ? intval($_GET['csa_deleted_count']) : 0;
+
+        DeleteAppointmentsPage::render([
+            'text_domain' => self::TEXT_DOMAIN,
+            'label' => self::LABEL_DELETE_APPOINTMENTS,
+            'users' => $users,
+            'deleted_user' => $deleted_user,
+            'deleted_all' => $deleted_all,
+            'deleted_count' => $deleted_count,
+        ]);
+    }
+
+    /**
      * Handle services form submission
      *
      * @return void
@@ -566,6 +606,69 @@ class Calendar {
             [
                 'page' => self::USERS_MENU_SLUG,
                 'csa_users_saved' => 1,
+            ],
+            admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    /**
+     * Handle deleting appointments for a specific user.
+     *
+     * @return void
+     */
+    public function handle_delete_user_appointments() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        check_admin_referer('csa_delete_appointments', 'csa_delete_nonce');
+
+        $user_id = isset($_POST['user_id']) ? intval($_POST['user_id']) : 0;
+        if ($user_id <= 0 || !get_user_by('id', $user_id)) {
+            wp_die(esc_html__('Invalid user.', self::TEXT_DOMAIN));
+        }
+
+        $db = Database::get_instance();
+        $deleted = $db->delete_appointments_for_user($user_id);
+        $deleted = is_int($deleted) ? $deleted : 0;
+
+        $redirect = add_query_arg(
+            [
+                'page' => self::DELETE_APPOINTMENTS_MENU_SLUG,
+                'csa_deleted_user' => $user_id,
+                'csa_deleted_count' => $deleted,
+            ],
+            admin_url('admin.php')
+        );
+
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    /**
+     * Handle deleting all appointments.
+     *
+     * @return void
+     */
+    public function handle_delete_all_appointments() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
+        }
+
+        check_admin_referer('csa_delete_appointments_all', 'csa_delete_all_nonce');
+
+        $db = Database::get_instance();
+        $deleted = $db->delete_all_appointments();
+        $deleted = is_int($deleted) ? $deleted : 0;
+
+        $redirect = add_query_arg(
+            [
+                'page' => self::DELETE_APPOINTMENTS_MENU_SLUG,
+                'csa_deleted_all' => 1,
+                'csa_deleted_count' => $deleted,
             ],
             admin_url('admin.php')
         );

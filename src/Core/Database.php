@@ -779,6 +779,39 @@ class Database {
     }
 
     /**
+     * Delete all appointments for a specific user.
+     *
+     * @param int $user_id
+     * @return int|false Number of rows deleted or false
+     */
+    public function delete_appointments_for_user($user_id) {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return false;
+        }
+        $user_id = intval($user_id);
+        if ($user_id <= 0) {
+            return false;
+        }
+
+        return $wpdb->delete($this->appointments_table, ['user_id' => $user_id], ['%d']);
+    }
+
+    /**
+     * Delete all appointments from the appointments table.
+     *
+     * @return int|false Number of rows deleted or false
+     */
+    public function delete_all_appointments() {
+        global $wpdb;
+        if (!$this->does_table_exist($this->appointments_table)) {
+            return false;
+        }
+
+        return $wpdb->query("DELETE FROM {$this->appointments_table}");
+    }
+
+    /**
      * Get a single appointment row by appointment-table id.
      *
      * @param int $id

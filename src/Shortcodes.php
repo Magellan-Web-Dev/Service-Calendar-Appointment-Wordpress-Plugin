@@ -97,7 +97,7 @@ class Shortcodes {
      * @return string
      */
     public static function render_appointment_field($atts = []) {
-        // Accept attributes: type (service_select|service|time|user|user_select|user_anyone|user_anyone_only), label (string), elementor_prop (hidden field id), field_prop (target field id)
+        // Accept attributes: type (service_select|service|time|user|user_select|user_anyone|user_anyone_only|service_duration), label (string), elementor_prop (hidden field id), field_prop (target field id)
         $atts = shortcode_atts([
             'type' => 'time',
             'label' => '',
@@ -131,7 +131,7 @@ class Shortcodes {
             $auto_anyone = true;
             $hide_user_list = true;
         }
-        if (!in_array($type, ['service_select', 'service', 'time', 'user', 'user_select'], true)) {
+        if (!in_array($type, ['service_select', 'service', 'time', 'user', 'user_select', 'service_duration'], true)) {
             return '<div class="csa-appointment-error">' . esc_html__('Invalid type attribute for appointment field shortcode.', self::TEXT_DOMAIN) . '</div>';
         }
         if ($type === 'user') {

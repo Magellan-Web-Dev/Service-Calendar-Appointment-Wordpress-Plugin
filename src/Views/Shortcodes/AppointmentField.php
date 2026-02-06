@@ -91,6 +91,11 @@ class AppointmentField {
             return $html;
         }
 
+        if ($type === 'service_duration') {
+            $html .= '</div>';
+            return $html;
+        }
+
         if ($type === 'service') {
             $service_title = isset($service['title']) ? $service['title'] : '';
             if ($service_title !== '') {
@@ -108,7 +113,7 @@ class AppointmentField {
         if ($type === 'service_select' || $type === 'services') {
             $select_label = $label !== '' ? $label : esc_html__('Select', $text_domain);
             $html .= '<div class="csa-appointment-services">';
-            $html .= '<div class="csa-service-placeholder">' . esc_html__('Select user', $text_domain) . '</div>';
+            $html .= '<div class="csa-service-placeholder">' . esc_html__('Select a service', $text_domain) . '</div>';
             $html .= '<ul class="csa-service-list">';
             foreach ($services as $index => $service) {
                 $title = isset($service['title']) ? $service['title'] : '';
@@ -160,6 +165,7 @@ class AppointmentField {
             }
             $select_label = $label !== '' ? $label : esc_html__('Select', $text_domain);
             $html .= '<div class="csa-appointment-users">';
+            $html .= '<div class="csa-user-placeholder">' . esc_html__('Select a service', $text_domain) . '</div>';
             $html .= '<ul class="csa-user-list">';
             foreach ($users as $index => $user) {
                 $user_label = isset($user['label']) ? $user['label'] : '';
