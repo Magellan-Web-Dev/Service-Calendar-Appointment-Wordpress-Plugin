@@ -284,6 +284,11 @@ class Calendar {
         $current_user = wp_get_current_user();
         $is_admin = current_user_can('manage_options');
         $current_user_id = $current_user ? intval($current_user->ID) : 0;
+        if (!headers_sent()) {
+            nocache_headers();
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('Pragma: no-cache');
+        }
         if (!$is_admin && !Access::is_user_enabled($current_user_id)) {
             wp_die(esc_html__('You do not have access to view this calendar.', self::TEXT_DOMAIN));
         }
