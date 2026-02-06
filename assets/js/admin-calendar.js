@@ -310,6 +310,7 @@ export class AdminCalendar {
                 const response = await this.request(payload);
                 if (response.success) {
                     this.showDayDetails(date);
+                    this.refreshCalendar();
                 } else {
                     const message = response.data && response.data.message ? response.data.message : 'Error deleting appointment';
                     window.alert(message);
@@ -760,13 +761,17 @@ export class AdminCalendar {
         const url = new URL(window.location.href);
         url.searchParams.set('month', month);
         url.searchParams.set('year', year);
+        url.searchParams.set('csa_ts', String(Date.now()));
         if (this.config && this.config.is_admin && this.config.selected_user_id) {
             url.searchParams.set('user_id', this.config.selected_user_id);
         }
 
         document.dispatchEvent(new Event('csa:ajaxStart'));
         try {
-            const response = await fetch(url.toString(), { credentials: 'same-origin' });
+            const response = await fetch(url.toString(), {
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
             if (!response.ok) {
                 throw new Error('Failed to load calendar');
             }
@@ -819,6 +824,18 @@ export class AdminCalendar {
         } finally {
             document.dispatchEvent(new Event('csa:ajaxComplete'));
         }
+    }
+
+    /**
+     * Refresh the current calendar month without a full reload.
+     *
+     * @returns {Promise<void>}
+     */
+    async refreshCalendar() {
+        if (!this.currentMonth || !this.currentYear) {
+            return;
+        }
+        await this.loadCalendarAsync(this.currentMonth, this.currentYear);
     }
 
     /**
@@ -1128,6 +1145,7 @@ export class AdminCalendar {
                 this.closeCustomAppointmentModal();
                 this.exitCustomBookingMode();
                 this.showDayDetails(date);
+                await this.refreshCalendar();
             } else {
                 const message = response.data && response.data.message ? response.data.message : 'Failed to schedule appointment';
                 window.alert(message);
@@ -1249,7 +1267,8 @@ export class AdminCalendar {
             });
             if (response.success) {
                 this.exitRescheduleMode();
-                window.location.reload();
+                await this.refreshCalendar();
+                this.showDayDetails(date);
             } else {
                 const message = response.data && response.data.message ? response.data.message : 'Failed to reschedule appointment';
                 window.alert(message);
