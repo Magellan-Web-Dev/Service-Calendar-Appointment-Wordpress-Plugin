@@ -251,13 +251,7 @@ class Calendar {
 
             $current_user = wp_get_current_user();
             $current_user_id = $current_user ? intval($current_user->ID) : 0;
-            $selected_user_id = $current_user_id;
-            if (current_user_can('manage_options') && isset($_GET['user_id'])) {
-                $candidate = intval($_GET['user_id']);
-                if ($candidate > 0 && get_user_by('id', $candidate)) {
-                    $selected_user_id = $candidate;
-                }
-            }
+            $selected_user_id = $this->resolve_selected_user_id(current_user_can('manage_options'), $current_user_id);
             $weekly = $db->get_weekly_availability($selected_user_id);
             $holiday_availability = $db->get_holiday_availability($selected_user_id);
 
@@ -310,13 +304,7 @@ class Calendar {
 
         $current_month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
         $current_year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
-        $selected_user_id = $current_user_id;
-        if ($is_admin && isset($_GET['user_id'])) {
-            $candidate = intval($_GET['user_id']);
-            if ($candidate > 0 && get_user_by('id', $candidate)) {
-                $selected_user_id = $candidate;
-            }
-        }
+        $selected_user_id = $this->resolve_selected_user_id($is_admin, $current_user_id);
 
         // Prevent navigating to months older than 3 months ago
         $tz = new \DateTimeZone($this->get_timezone_string());
@@ -890,5 +878,34 @@ class Calendar {
         $tz = new \DateTimeZone($this->get_timezone_string());
         $now = new \DateTime('now', $tz);
         return $now->format('Y-m-d');
+    }
+
+    /**
+     * Resolve selected user id for admin calendar context.
+     *
+     * @param bool $is_admin
+     * @param int $current_user_id
+     * @return int
+     */
+    private function resolve_selected_user_id($is_admin, $current_user_id) {
+        $current_user_id = intval($current_user_id);
+        $selected_user_id = $current_user_id;
+        $bookable_ids = [];
+
+        if ($is_admin) {
+            $bookable_ids = Access::get_bookable_user_ids();
+            if (isset($_GET['user_id'])) {
+                $candidate = intval($_GET['user_id']);
+                if ($candidate > 0 && get_user_by('id', $candidate)) {
+                    $selected_user_id = $candidate;
+                }
+            }
+
+            if (!empty($bookable_ids) && !in_array($selected_user_id, $bookable_ids, true)) {
+                $selected_user_id = $bookable_ids[0];
+            }
+        }
+
+        return $selected_user_id;
     }
 }
