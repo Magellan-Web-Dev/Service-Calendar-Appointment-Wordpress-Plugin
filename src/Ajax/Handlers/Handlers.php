@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Handlers class
  *
@@ -41,7 +42,7 @@ class Handlers extends BaseHandler {
      *
      * @return Handlers
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -83,103 +84,103 @@ class Handlers extends BaseHandler {
         add_action('wp_ajax_csa_create_custom_appointment', [$this, 'create_custom_appointment']);
     }
 
-    public function get_day_details() {
+    public function get_day_details(): void {
         $this->availability->get_day_details();
     }
 
-    public function build_day_details_payload($date, $user_id = null) {
+    public function build_day_details_payload(string $date, ?int $user_id = null): mixed {
         return $this->availability->build_day_details_payload($date, $user_id);
     }
 
-    public function delete_appointment() {
+    public function delete_appointment(): void {
         $this->booking->delete_appointment();
     }
 
-    public function reschedule_appointment() {
+    public function reschedule_appointment(): void {
         $this->rescheduling->reschedule_appointment();
     }
 
-    public function create_custom_appointment() {
+    public function create_custom_appointment(): void {
         $this->booking->create_custom_appointment();
     }
 
-    public function fetch_submission_values() {
+    public function fetch_submission_values(): void {
         $this->booking->fetch_submission_values();
     }
 
-    public function block_time_slot() {
+    public function block_time_slot(): void {
         $this->booking->block_time_slot();
     }
 
-    public function unblock_time_slot() {
+    public function unblock_time_slot(): void {
         $this->booking->unblock_time_slot();
     }
 
-    public function get_available_times() {
+    public function get_available_times(): void {
         $this->availability->get_available_times();
     }
 
-    public function build_available_times($date, $duration_seconds, $user_id = null) {
+    public function build_available_times(string $date, int $duration_seconds, ?int $user_id = null): mixed {
         return $this->availability->build_available_times($date, $duration_seconds, $user_id);
     }
 
-    public function get_available_months() {
+    public function get_available_months(): void {
         $this->availability->get_available_months();
     }
 
-    public function get_available_days() {
+    public function get_available_days(): void {
         $this->availability->get_available_days();
     }
 
-    public function resolve_anyone_user() {
+    public function resolve_anyone_user(): void {
         $this->availability->resolve_anyone_user();
     }
 
-    public function filter_anyone_times() {
+    public function filter_anyone_times(): void {
         $this->availability->filter_anyone_times();
     }
 
-    public function resolve_anyone_times() {
+    public function resolve_anyone_times(): void {
         $this->availability->resolve_anyone_times();
     }
 
-    public function build_available_times_anyone($date, $duration_seconds) {
+    public function build_available_times_anyone(string $date, int $duration_seconds): mixed {
         return $this->availability->build_available_times_anyone($date, $duration_seconds);
     }
 
-    public function build_available_days_anyone($month, $slots_needed, $duration_seconds = null) {
+    public function build_available_days_anyone(string $month, int $slots_needed, ?int $duration_seconds = null): mixed {
         return $this->availability->build_available_days_anyone($month, $slots_needed, $duration_seconds);
     }
 
-    public function build_available_days($month, $slots_needed, $user_id = null) {
+    public function build_available_days(string $month, int $slots_needed, ?int $user_id = null): mixed {
         return $this->availability->build_available_days($month, $slots_needed, $user_id);
     }
 
-    public function check_time_range_available($date, $start_time, $duration_seconds, $user_id = null) {
+    public function check_time_range_available(string $date, string $start_time, int $duration_seconds, ?int $user_id = null): mixed {
         return $this->availability->check_time_range_available($date, $start_time, $duration_seconds, $user_id);
     }
 
-    public function build_slot_times_for_duration($start_time, $duration_seconds) {
+    public function build_slot_times_for_duration(string $start_time, int $duration_seconds): array {
         return $this->availability->build_slot_times_for_duration($start_time, $duration_seconds);
     }
 
-    public function get_weekly_availability() {
+    public function get_weekly_availability(): void {
         $this->booking->get_weekly_availability();
     }
 
-    public function save_weekly_availability() {
+    public function save_weekly_availability(): void {
         $this->booking->save_weekly_availability();
     }
 
-    public function save_timezone() {
+    public function save_timezone(): void {
         $this->booking->save_timezone();
     }
 
-    public function save_holiday_availability() {
+    public function save_holiday_availability(): void {
         $this->booking->save_holiday_availability();
     }
 
-    public function set_manual_override() {
+    public function set_manual_override(): void {
         $this->booking->set_manual_override();
     }
 }

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Multisite sync settings and helpers
  *
@@ -26,7 +27,7 @@ class Multisite {
      *
      * @return string
      */
-    public static function get_mode() {
+    public static function get_mode(): string {
         $mode = get_option(self::OPTION_MODE, self::MODE_STANDALONE);
         if (!in_array($mode, [self::MODE_STANDALONE, self::MODE_MASTER, self::MODE_CHILD], true)) {
             return self::MODE_STANDALONE;
@@ -37,14 +38,14 @@ class Multisite {
     /**
      * @return bool
      */
-    public static function is_master() {
+    public static function is_master(): bool {
         return self::get_mode() === self::MODE_MASTER;
     }
 
     /**
      * @return bool
      */
-    public static function is_child() {
+    public static function is_child(): bool {
         return self::get_mode() === self::MODE_CHILD;
     }
 
@@ -53,7 +54,7 @@ class Multisite {
      *
      * @return string
      */
-    public static function get_master_url() {
+    public static function get_master_url(): string {
         $url = (string) get_option(self::OPTION_MASTER_URL, '');
         return trim($url);
     }
@@ -63,7 +64,7 @@ class Multisite {
      *
      * @return string
      */
-    public static function get_api_key() {
+    public static function get_api_key(): string {
         $key = (string) get_option(self::OPTION_API_KEY, '');
         return trim($key);
     }
@@ -73,7 +74,7 @@ class Multisite {
      *
      * @return string
      */
-    public static function ensure_master_key() {
+    public static function ensure_master_key(): string {
         $key = self::get_api_key();
         if ($key !== '') {
             return $key;
@@ -93,7 +94,7 @@ class Multisite {
      * @param bool $regenerate_key
      * @return void
      */
-    public static function save_settings($mode, $master_url, $api_key, $regenerate_key = false) {
+    public static function save_settings(string $mode, string $master_url, string $api_key, bool $regenerate_key = false): void {
         $mode = in_array($mode, [self::MODE_STANDALONE, self::MODE_MASTER, self::MODE_CHILD], true)
             ? $mode
             : self::MODE_STANDALONE;
@@ -128,7 +129,7 @@ class Multisite {
      * @param array $query
      * @return string
      */
-    public static function build_master_url($path, $query = []) {
+    public static function build_master_url(string $path, array $query = []): string {
         $base = rtrim(self::get_master_url(), '/');
         if ($base === '') {
             return '';
@@ -149,7 +150,7 @@ class Multisite {
      * @param string $method
      * @return array|\WP_Error
      */
-    public static function request_master($path, $query = [], $body = [], $method = 'GET') {
+    public static function request_master(string $path, array $query = [], array $body = [], string $method = 'GET'): array|\WP_Error {
         $url = self::build_master_url($path, $query);
         if ($url === '') {
             return new \WP_Error('csa_multisite_missing_url', __('Master site URL is not configured.', 'calendar-service-appointments-form'));
@@ -216,7 +217,7 @@ class Multisite {
      *
      * @return array
      */
-    public static function fetch_master_services() {
+    public static function fetch_master_services(): array {
         $data = self::request_master('/csa/v1/sync/services');
         if (is_wp_error($data)) {
             return [];
@@ -231,7 +232,7 @@ class Multisite {
      * @param int $duration_seconds
      * @return array|\WP_Error
      */
-    public static function fetch_master_available_times($date, $duration_seconds, $username = '') {
+    public static function fetch_master_available_times(string $date, int $duration_seconds, string $username = ''): array|\WP_Error {
         return self::request_master('/csa/v1/sync/available-times', [
             'date' => $date,
             'duration_seconds' => (int) $duration_seconds,
@@ -246,7 +247,7 @@ class Multisite {
      * @param int $duration_seconds
      * @return array|\WP_Error
      */
-    public static function fetch_master_available_days($month, $duration_seconds, $username = '') {
+    public static function fetch_master_available_days(string $month, int $duration_seconds, string $username = ''): array|\WP_Error {
         return self::request_master('/csa/v1/sync/available-days', [
             'month' => $month,
             'duration_seconds' => (int) $duration_seconds,
@@ -264,7 +265,7 @@ class Multisite {
      * @param array $submission_data
      * @return array|\WP_Error
      */
-    public static function book_on_master($date, $time, $service_title, $duration_seconds, $submission_data = []) {
+    public static function book_on_master(string $date, string $time, string $service_title, int $duration_seconds, array $submission_data = []): array|\WP_Error {
         $payload = [
             'date' => $date,
             'time' => $time,

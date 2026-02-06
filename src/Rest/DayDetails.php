@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * REST API endpoint for day details
  *
@@ -43,7 +44,7 @@ class DayDetails {
      *
      * @return DayDetails
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -62,7 +63,7 @@ class DayDetails {
      *
      * @return void
      */
-    public function register_routes() {
+    public function register_routes(): void {
         register_rest_route(self::REST_NAMESPACE, self::ROUTE_DAY_DETAILS, [
             'methods' => \WP_REST_Server::READABLE,
             'callback' => [$this, 'get_day_details'],
@@ -120,7 +121,7 @@ class DayDetails {
      *
      * @return bool
      */
-    public function can_view_day_details() {
+    public function can_view_day_details(): bool {
         return true;
     }
 
@@ -130,7 +131,7 @@ class DayDetails {
      * @param mixed $param
      * @return bool
      */
-    public function validate_date_param($param) {
+    public function validate_date_param(mixed $param): bool {
         if (!is_string($param)) {
             return false;
         }
@@ -143,7 +144,7 @@ class DayDetails {
      * @param mixed $param
      * @return bool
      */
-    public function validate_month_param($param) {
+    public function validate_month_param(mixed $param): bool {
         if (!is_string($param)) {
             return false;
         }
@@ -156,7 +157,7 @@ class DayDetails {
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
-    public function get_day_details($request) {
+    public function get_day_details(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
         $date = $request->get_param('date');
         $include_appointments = (bool) $request->get_param('include_appointments');
         $include_submission_data = (bool) $request->get_param('include_submission_data');
@@ -202,7 +203,7 @@ class DayDetails {
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
-    public function get_month_details($request) {
+    public function get_month_details(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
         $month = $request->get_param('month');
         $include_time_slots = (bool) $request->get_param('include_time_slots');
         $include_appointments = (bool) $request->get_param('include_appointments');
@@ -278,7 +279,7 @@ class DayDetails {
      * @param bool $include_submission_data
      * @return array
      */
-    private function decorate_time_slots($time_slots, $include_appointments, $include_submission_data) {
+    private function decorate_time_slots(array $time_slots, bool $include_appointments, bool $include_submission_data): array {
         if (!is_array($time_slots)) {
             return [];
         }
@@ -320,7 +321,7 @@ class DayDetails {
      * @param string $status
      * @return array
      */
-    private function collect_slots_by_status($time_slots, $status) {
+    private function collect_slots_by_status(array $time_slots, string $status): array {
         $out = [];
         foreach ($time_slots as $slot) {
             if (!is_array($slot)) {
@@ -342,7 +343,7 @@ class DayDetails {
      * @param array $appointment
      * @return array
      */
-    private function sanitize_appointment($appointment) {
+    private function sanitize_appointment(array $appointment): array {
         if (!is_array($appointment)) {
             return [];
         }

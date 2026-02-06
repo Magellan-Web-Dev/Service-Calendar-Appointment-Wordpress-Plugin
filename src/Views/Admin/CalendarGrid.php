@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Admin calendar grid view
  *
@@ -19,7 +20,7 @@ class CalendarGrid {
      * @param array $context
      * @return void
      */
-    public static function render($context) {
+    public static function render(array $context): void {
         $text_domain = isset($context['text_domain']) ? $context['text_domain'] : 'calendar-service-appointments-form';
         $calendar_cells = isset($context['calendar_cells']) ? $context['calendar_cells'] : [];
         $month = isset($context['month']) ? (int) $context['month'] : 0;

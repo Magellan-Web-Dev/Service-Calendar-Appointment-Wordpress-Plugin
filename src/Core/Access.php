@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * User access helpers
  *
@@ -22,7 +23,7 @@ class Access {
      *
      * @return array
      */
-    public static function get_enabled_user_ids() {
+    public static function get_enabled_user_ids(): array {
         $ids = get_option(self::OPTION_ENABLED_USERS, null);
         if ($ids === false || $ids === null) {
             $ids = [];
@@ -46,7 +47,7 @@ class Access {
      * @param int $user_id
      * @return bool
      */
-    public static function is_user_enabled($user_id) {
+    public static function is_user_enabled(int $user_id): bool {
         $user_id = intval($user_id);
         if ($user_id <= 0) {
             return false;
@@ -64,7 +65,7 @@ class Access {
      * @param string $username
      * @return int
      */
-    public static function resolve_enabled_user_id($username) {
+    public static function resolve_enabled_user_id(?string $username): int {
         $username = is_string($username) ? trim($username) : '';
         if ($username === '') {
             return 0;
@@ -79,7 +80,7 @@ class Access {
         return self::is_user_enabled($user->ID) ? intval($user->ID) : 0;
     }
 
-    public static function is_anyone_username($username) {
+    public static function is_anyone_username(?string $username): bool {
         if (!is_string($username)) {
             return false;
         }
@@ -96,7 +97,7 @@ class Access {
      * @param string $name
      * @return int
      */
-    public static function resolve_enabled_user_id_by_name($name) {
+    public static function resolve_enabled_user_id_by_name(?string $name): int {
         $name = self::normalize_user_name($name);
         if ($name === '') {
             return 0;
@@ -146,7 +147,7 @@ class Access {
      * @param \WP_User $user
      * @return string
      */
-    public static function build_user_display_name($user) {
+    public static function build_user_display_name(?\WP_User $user): string {
         if (!$user) {
             return '';
         }
@@ -167,7 +168,7 @@ class Access {
      * @param string $value
      * @return string
      */
-    private static function normalize_user_name($value) {
+    private static function normalize_user_name(?string $value): string {
         $value = is_string($value) ? trim($value) : '';
         if ($value === '') {
             return '';
@@ -181,7 +182,7 @@ class Access {
      *
      * @return int
      */
-    public static function get_default_admin_id() {
+    public static function get_default_admin_id(): int {
         $admins = get_users([
             'role' => 'administrator',
             'orderby' => 'ID',
@@ -201,7 +202,7 @@ class Access {
      * @param array $user_ids
      * @return void
      */
-    public static function save_enabled_user_ids($user_ids) {
+    public static function save_enabled_user_ids(array $user_ids): void {
         if (!is_array($user_ids)) {
             $user_ids = [];
         }
@@ -214,7 +215,7 @@ class Access {
      *
      * @return array
      */
-    public static function get_all_service_slugs() {
+    public static function get_all_service_slugs(): array {
         $db = Database::get_instance();
         $services = $db->get_services();
         $slugs = [];
@@ -243,7 +244,7 @@ class Access {
      * @param string $value
      * @return string
      */
-    public static function resolve_service_slug($value) {
+    public static function resolve_service_slug(mixed $value): string {
         if (!is_string($value)) {
             return '';
         }
@@ -282,7 +283,7 @@ class Access {
      * @param int $user_id
      * @return array|null
      */
-    public static function get_user_service_slugs($user_id) {
+    public static function get_user_service_slugs(int|string $user_id): ?array {
         $user_id = intval($user_id);
         if ($user_id <= 0) {
             return null;
@@ -308,7 +309,7 @@ class Access {
      * @param int $user_id
      * @return array
      */
-    public static function get_allowed_service_slugs_for_user($user_id) {
+    public static function get_allowed_service_slugs_for_user(int|string $user_id): array {
         $saved = self::get_user_service_slugs($user_id);
         if ($saved !== null) {
             return $saved;
@@ -323,7 +324,7 @@ class Access {
      * @param array $slugs
      * @return void
      */
-    public static function save_user_service_slugs($user_id, $slugs) {
+    public static function save_user_service_slugs(int $user_id, array $slugs): void {
         $user_id = intval($user_id);
         if ($user_id <= 0) {
             return;
@@ -346,7 +347,7 @@ class Access {
      * @param string $service_value
      * @return bool
      */
-    public static function user_can_perform_service($user_id, $service_value) {
+    public static function user_can_perform_service(int $user_id, string $service_value): bool {
         $user_id = intval($user_id);
         if ($user_id <= 0) {
             return false;
@@ -364,7 +365,7 @@ class Access {
      *
      * @return array
      */
-    public static function get_bookable_user_ids() {
+    public static function get_bookable_user_ids(): array {
         $enabled = self::get_enabled_user_ids();
         $bookable = [];
         foreach ($enabled as $user_id) {
@@ -382,7 +383,7 @@ class Access {
      * @param string $service_value
      * @return array
      */
-    public static function get_user_ids_for_service($service_value) {
+    public static function get_user_ids_for_service(string $service_value): array {
         $slug = self::resolve_service_slug($service_value);
         if ($slug === '') {
             return [];

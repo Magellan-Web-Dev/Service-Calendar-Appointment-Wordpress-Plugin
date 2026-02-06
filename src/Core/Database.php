@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Database class
  *
@@ -92,7 +93,7 @@ class Database {
      *
      * @return Database
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -114,7 +115,7 @@ class Database {
      * @param int|null $user_id
      * @return int
      */
-    private function normalize_user_id($user_id) {
+    private function normalize_user_id(?int $user_id): int {
         $user_id = $user_id !== null ? intval($user_id) : 0;
         if ($user_id > 0) {
             return $user_id;
@@ -129,7 +130,7 @@ class Database {
      * @param int $user_id
      * @return string
      */
-    private function get_user_option_key($base, $user_id) {
+    private function get_user_option_key(string $base, int $user_id): string {
         return $base . '_user_' . intval($user_id);
     }
 
@@ -140,7 +141,7 @@ class Database {
      * @param int $user_id
      * @return mixed|null
      */
-    private function get_user_scoped_option($base, $user_id) {
+    private function get_user_scoped_option(string $base, int $user_id): mixed {
         $key = $this->get_user_option_key($base, $user_id);
         $opt = get_option($key, null);
         if ($opt !== null) {
@@ -164,7 +165,7 @@ class Database {
      * @param mixed $value
      * @return bool
      */
-    private function save_user_scoped_option($base, $user_id, $value) {
+    private function save_user_scoped_option(string $base, int $user_id, mixed $value): bool {
         $key = $this->get_user_option_key($base, $user_id);
         return update_option($key, $value);
     }
@@ -174,7 +175,7 @@ class Database {
      *
      * @return array Weekday (0-6) => array of hour strings (HH:MM)
      */
-    public function get_weekly_availability($user_id = null) {
+    public function get_weekly_availability(?int $user_id = null): array {
         $user_id = $this->normalize_user_id($user_id);
         $opt = $this->get_user_scoped_option(self::OPTION_WEEKLY_AVAILABILITY, $user_id);
         if ($opt === null) {
@@ -204,7 +205,7 @@ class Database {
      * @param array $availability
      * @return bool
      */
-    public function save_weekly_availability($availability, $user_id = null) {
+    public function save_weekly_availability(array $availability, ?int $user_id = null): bool {
         $user_id = $this->normalize_user_id($user_id);
         return $this->save_user_scoped_option(self::OPTION_WEEKLY_AVAILABILITY, $user_id, $availability);
     }
@@ -214,7 +215,7 @@ class Database {
      *
      * @return array Array of enabled holiday keys.
      */
-    public function get_holiday_availability($user_id = null) {
+    public function get_holiday_availability(?int $user_id = null): array {
         $user_id = $this->normalize_user_id($user_id);
         $opt = $this->get_user_scoped_option(self::OPTION_HOLIDAY_AVAILABILITY, $user_id);
         if ($opt === null) {
@@ -230,7 +231,7 @@ class Database {
      * @param array $availability
      * @return bool
      */
-    public function save_holiday_availability($availability, $user_id = null) {
+    public function save_holiday_availability(array $availability, ?int $user_id = null): bool {
         $user_id = $this->normalize_user_id($user_id);
         return $this->save_user_scoped_option(self::OPTION_HOLIDAY_AVAILABILITY, $user_id, $availability);
     }
@@ -240,7 +241,7 @@ class Database {
      *
      * @return array
      */
-    public function get_services() {
+    public function get_services(): array {
         $opt = get_option(self::OPTION_SERVICES, []);
         if (!is_array($opt)) {
             return [];
@@ -254,7 +255,7 @@ class Database {
      * @param array $services
      * @return bool
      */
-    public function save_services($services) {
+    public function save_services(array $services): bool {
         return update_option(self::OPTION_SERVICES, $services);
     }
 
@@ -263,7 +264,7 @@ class Database {
      *
      * @return string
      */
-    public function get_timezone_string() {
+    public function get_timezone_string(): string {
         $tz = get_option(self::OPTION_TIMEZONE, '');
         if (!$tz) {
             $tz = 'America/New_York';
@@ -285,7 +286,7 @@ class Database {
      * @param string $timezone
      * @return bool
      */
-    public function save_timezone($timezone) {
+    public function save_timezone(string $timezone): bool {
         return update_option(self::OPTION_TIMEZONE, $timezone);
     }
 
@@ -294,7 +295,7 @@ class Database {
      *
      * @return void
      */
-    public function maybe_migrate_times_to_utc() {
+    public function maybe_migrate_times_to_utc(): void {
         $done = get_option(self::OPTION_TIMES_ARE_UTC, '');
         if ($done === '1') {
             return;
@@ -358,7 +359,7 @@ class Database {
      *
      * @return array date => [ 'HH:MM' => 'allow'|'block' ]
      */
-    public function get_manual_overrides($user_id = null) {
+    public function get_manual_overrides(?int $user_id = null): array {
         $user_id = $this->normalize_user_id($user_id);
         $opt = $this->get_user_scoped_option(self::OPTION_MANUAL_OVERRIDES, $user_id);
         if ($opt === null) {
@@ -374,7 +375,7 @@ class Database {
      * @param string $date
      * @return array
      */
-    public function get_overrides_for_date($date, $user_id = null) {
+    public function get_overrides_for_date(string $date, ?int $user_id = null): array {
         $all = $this->get_manual_overrides($user_id);
         return isset($all[$date]) ? $all[$date] : [];
     }
@@ -387,7 +388,7 @@ class Database {
      * @param string $status 'allow' or 'block' or 'remove'
      * @return bool
      */
-    public function set_manual_override($date, $time, $status, $user_id = null) {
+    public function set_manual_override(string $date, string $time, string $status, ?int $user_id = null): bool {
         $all = $this->get_manual_overrides($user_id);
         if (!isset($all[$date])) {
             $all[$date] = [];
@@ -415,7 +416,7 @@ class Database {
      * @param string $time Time in H:i:s format (or H:i).
      * @return bool True if reservation succeeded, false if already reserved.
      */
-    public function reserve_time_slot($date, $time, $user_id = null) {
+    public function reserve_time_slot(string $date, string $time, ?int $user_id = null): bool {
         global $wpdb;
 
         $this->ensure_blocked_slots_user_column();
@@ -445,7 +446,7 @@ class Database {
      *
      * @return void
      */
-    public static function create_tables() {
+    public static function create_tables(): void {
         global $wpdb;
         $table_name = $wpdb->prefix . self::TABLE_BLOCKED_SLOTS;
         $charset_collate = $wpdb->get_charset_collate();
@@ -540,7 +541,7 @@ class Database {
      * @param int|null $user_id
      * @return int|false Insert ID or false
      */
-    public function insert_appointment($submission_id, $date, $time, $submission_data = null, $user_id = null) {
+    public function insert_appointment(?int $submission_id, string $date, string $time, mixed $submission_data = null, ?int $user_id = null): int|false {
         global $wpdb;
 
         $utc = $this->convert_local_to_utc($date, $time);
@@ -636,7 +637,7 @@ class Database {
      * @param int $month
      * @return array
      */
-    public function get_appointments_for_month_from_table($year, $month, $user_id = null) {
+    public function get_appointments_for_month_from_table(int $year, int $month, ?int $user_id = null): array {
         global $wpdb;
         $range = $this->get_utc_range_for_local_month($year, $month);
         $start_date = $range['start'];
@@ -704,7 +705,7 @@ class Database {
      * @param string $date
      * @return array
      */
-    public function get_appointments_for_date_from_table($date, $user_id = null) {
+    public function get_appointments_for_date_from_table(string $date, ?int $user_id = null): array {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return [];
@@ -769,7 +770,7 @@ class Database {
      * @param int $id
      * @return int|false Number of rows deleted or false
      */
-    public function delete_appointment_by_id($id) {
+    public function delete_appointment_by_id(int $id): int|false {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return false;
@@ -784,7 +785,7 @@ class Database {
      * @param int $user_id
      * @return int|false Number of rows deleted or false
      */
-    public function delete_appointments_for_user($user_id) {
+    public function delete_appointments_for_user(int $user_id): int|false {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return false;
@@ -802,7 +803,7 @@ class Database {
      *
      * @return int|false Number of rows deleted or false
      */
-    public function delete_all_appointments() {
+    public function delete_all_appointments(): int|false {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return false;
@@ -817,7 +818,7 @@ class Database {
      * @param int $id
      * @return array|null
      */
-    public function get_appointment_by_id($id) {
+    public function get_appointment_by_id(int $id): ?array {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return null;
@@ -860,7 +861,7 @@ class Database {
      * @param string $time
      * @return int|false
      */
-    public function reschedule_appointment_by_id($id, $date, $time) {
+    public function reschedule_appointment_by_id(int $id, string $date, string $time): int|false {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return false;
@@ -887,7 +888,7 @@ class Database {
      * @param string $time H:i or H:i:s
      * @return int|false Number of rows deleted or false
      */
-    public function delete_appointment_by_submission($submission_id, $date, $time) {
+    public function delete_appointment_by_submission(int $submission_id, string $date, string $time): int|false {
         global $wpdb;
         $utc = $this->convert_local_to_utc($date, $time);
         if (!$this->does_table_exist($this->appointments_table)) {
@@ -911,7 +912,7 @@ class Database {
      * @param int $months
      * @return int|false Number of rows deleted or false
      */
-    public function delete_appointments_older_than_months($months = 3) {
+    public function delete_appointments_older_than_months(int $months = 3): int|false {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return 0;
@@ -931,7 +932,7 @@ class Database {
      *
      * @return void
      */
-    public function maybe_backfill_submitted_at_unix() {
+    public function maybe_backfill_submitted_at_unix(): void {
         global $wpdb;
         if (!$this->does_table_exist($this->appointments_table)) {
             return;
@@ -976,7 +977,7 @@ class Database {
      * @param int $default_user_id
      * @return void
      */
-    public function maybe_backfill_user_id($default_user_id) {
+    public function maybe_backfill_user_id(int $default_user_id): void {
         global $wpdb;
         $default_user_id = intval($default_user_id);
         if ($default_user_id <= 0) {
@@ -1006,7 +1007,7 @@ class Database {
      *
      * @return \DateTimeZone
      */
-    private function get_wp_timezone() {
+    private function get_wp_timezone(): \DateTimeZone {
         $timezone_string = get_option('timezone_string');
         if ($timezone_string) {
             return new \DateTimeZone($timezone_string);
@@ -1025,7 +1026,7 @@ class Database {
      * @param string $table_name
      * @return bool
      */
-    private function does_table_exist($table_name) {
+    private function does_table_exist(string $table_name): bool {
         global $wpdb;
         $escaped = esc_sql($table_name);
         $res = $wpdb->get_var("SHOW TABLES LIKE '{$escaped}'");
@@ -1039,7 +1040,7 @@ class Database {
      * @param string $column
      * @return bool
      */
-    private function table_has_column($table_name, $column) {
+    private function table_has_column(string $table_name, string $column): bool {
         global $wpdb;
         $t = esc_sql($table_name);
         $c = esc_sql($column);
@@ -1052,7 +1053,7 @@ class Database {
      *
      * @return void
      */
-    private function ensure_blocked_slots_user_column() {
+    private function ensure_blocked_slots_user_column(): void {
         global $wpdb;
         if (!$this->does_table_exist($this->table_name)) {
             self::create_tables();
@@ -1093,7 +1094,7 @@ class Database {
      * @param string $time Time in H:i:s format.
      * @return int|false The number of rows inserted, or false on error.
      */
-    public function block_time_slot($date, $time, $user_id = null) {
+    public function block_time_slot(string $date, string $time, ?int $user_id = null): int|false {
         global $wpdb;
         $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
@@ -1117,7 +1118,7 @@ class Database {
      * @param string $time Time in H:i:s format.
      * @return int|false The number of rows deleted, or false on error.
      */
-    public function unblock_time_slot($date, $time, $user_id = null) {
+    public function unblock_time_slot(string $date, string $time, ?int $user_id = null): int|false {
         global $wpdb;
         $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
@@ -1141,7 +1142,7 @@ class Database {
      * @param string $time Time in H:i:s format.
      * @return bool True if blocked, false otherwise.
      */
-    public function is_slot_blocked($date, $time, $user_id = null) {
+    public function is_slot_blocked(string $date, string $time, ?int $user_id = null): bool {
         global $wpdb;
         $this->ensure_blocked_slots_user_column();
         $utc = $this->convert_local_to_utc($date, $time);
@@ -1164,7 +1165,7 @@ class Database {
      * @param int $month Month.
      * @return array Array of blocked slots.
      */
-    public function get_blocked_slots_for_month($year, $month, $user_id = null) {
+    public function get_blocked_slots_for_month(int $year, int $month, ?int $user_id = null): array {
         global $wpdb;
         $this->ensure_blocked_slots_user_column();
         $user_id = $this->normalize_user_id($user_id);
@@ -1198,7 +1199,7 @@ class Database {
      * @param string $date Date in Y-m-d format.
      * @return array Array of blocked slots.
      */
-    public function get_blocked_slots_for_date($date, $user_id = null) {
+    public function get_blocked_slots_for_date(string $date, ?int $user_id = null): array {
         global $wpdb;
         $this->ensure_blocked_slots_user_column();
         $user_id = $this->normalize_user_id($user_id);
@@ -1232,7 +1233,7 @@ class Database {
      * @param string $time H:i or H:i:s
      * @return array{date:string,time:string}
      */
-    private function convert_local_to_utc($date, $time) {
+    private function convert_local_to_utc(string $date, string $time): array {
         $tz = $this->get_timezone_object($this->get_timezone_string());
         $local = $this->build_datetime($date, $time, $tz);
         if (!$local) {
@@ -1252,7 +1253,7 @@ class Database {
      * @param string $time H:i or H:i:s
      * @return array{date:string,time:string}
      */
-    private function convert_utc_to_local($date, $time) {
+    private function convert_utc_to_local(string $date, string $time): array {
         $utc = $this->build_datetime($date, $time, new \DateTimeZone('UTC'));
         if (!$utc) {
             return ['date' => $date, 'time' => $this->normalize_time($time)];
@@ -1272,7 +1273,7 @@ class Database {
      * @param \DateTimeZone $tz
      * @return \DateTimeImmutable|null
      */
-    private function build_datetime($date, $time, $tz) {
+    private function build_datetime(string $date, string $time, \DateTimeZone $tz): ?\DateTimeImmutable {
         $time = $this->normalize_time($time);
         $dt = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time, $tz);
         if ($dt instanceof \DateTimeImmutable) {
@@ -1287,7 +1288,7 @@ class Database {
      * @param string $time
      * @return string
      */
-    private function normalize_time($time) {
+    private function normalize_time(string $time): string {
         if (strlen($time) === 5) {
             return $time . ':00';
         }
@@ -1300,7 +1301,7 @@ class Database {
      * @param string $timezone
      * @return \DateTimeZone
      */
-    private function get_timezone_object($timezone) {
+    private function get_timezone_object(string $timezone): \DateTimeZone {
         try {
             return new \DateTimeZone($timezone);
         } catch (\Exception $e) {
@@ -1314,7 +1315,7 @@ class Database {
      * @param string $date
      * @return array{start:string,end:string}
      */
-    private function get_utc_range_for_local_date($date) {
+    private function get_utc_range_for_local_date(string $date): array {
         $tz = $this->get_timezone_object($this->get_timezone_string());
         $start_local = $this->build_datetime($date, '00:00:00', $tz);
         $end_local = $this->build_datetime($date, '23:59:59', $tz);
@@ -1337,7 +1338,7 @@ class Database {
      * @param int $month
      * @return array{start:string,end:string}
      */
-    private function get_utc_range_for_local_month($year, $month) {
+    private function get_utc_range_for_local_month(int $year, int $month): array {
         $start_date = sprintf('%04d-%02d-01', $year, $month);
         $end_date = date('Y-m-t', strtotime($start_date));
         $start = $this->get_utc_range_for_local_date($start_date);

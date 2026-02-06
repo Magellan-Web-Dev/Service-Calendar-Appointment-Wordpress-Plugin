@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Shortcodes for appointment field
  *
@@ -54,7 +55,7 @@ class Shortcodes {
      *
      * @return void
      */
-    public static function init() {
+    public static function init(): void {
         // Register shortcode tailored for Elementor usage
         add_shortcode(self::SHORTCODE_TAG, [__CLASS__, 'render_appointment_field']);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_scripts']);
@@ -65,7 +66,7 @@ class Shortcodes {
      *
      * @return void
      */
-    public static function enqueue_scripts() {
+    public static function enqueue_scripts(): void {
         wp_enqueue_style(self::SCRIPT_HANDLE . '-styles', CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/frontend.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
         wp_enqueue_script(self::SCRIPT_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/appointment-shortcode.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
         wp_script_add_data(self::SCRIPT_HANDLE, 'type', 'module');
@@ -96,7 +97,7 @@ class Shortcodes {
      * @param array $atts Shortcode attributes.
      * @return string
      */
-    public static function render_appointment_field($atts = []) {
+    public static function render_appointment_field(array $atts = []): string {
         // Accept attributes: type (service_select|service|time|user|user_select|user_anyone|user_anyone_only|service_duration), label (string), elementor_prop (hidden field id), field_prop (target field id)
         $atts = shortcode_atts([
             'type' => 'time',
@@ -239,7 +240,7 @@ class Shortcodes {
      *
      * @return array
      */
-    private static function get_services_for_shortcode() {
+    private static function get_services_for_shortcode(): array {
         if (Multisite::is_child()) {
             $stored = Multisite::fetch_master_services();
         } else {
@@ -293,7 +294,7 @@ class Shortcodes {
      *
      * @return array
      */
-    private static function get_service_duration_labels() {
+    private static function get_service_duration_labels(): array {
         return [
             '900' => '15 minutes',
             '1800' => '30 minutes',

@@ -54,14 +54,34 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
      */
     public const FIELD_APPOINTMENT_TIME = 'appointment_time';
 
+
+    /**
+     * Get field type
+     * 
+     * @return string
+     */
     public function get_type() {
         return self::TYPE;
     }
 
+    /**
+     * Get field name
+     * 
+     * @return string
+     */
     public function get_name() {
         return __(self::LABEL, self::TEXT_DOMAIN);
     }
 
+    /**
+     * Render field
+     * 
+     * @param array $item
+     * @param int $item_index
+     * @param \ElementorPro\Modules\Forms\Classes\Form_Record $form
+     * 
+     * @return void
+     */
     public function render($item, $item_index, $form) {
         $label = '';
         if (!empty($item['field_label'])) {
@@ -89,6 +109,15 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
         echo '</div>';
     }
 
+    /**
+     * Validate field
+     * 
+     * @param array $field
+     * @param \ElementorPro\Modules\Forms\Classes\Form_Record $record
+     * @param \ElementorPro\Modules\Forms\Classes\Form_Ajax_Handler $ajax_handler
+     * 
+     * @return void
+     */
     public function validation($field, $record, $ajax_handler) {
         // The processing hook will perform availability validation; here ensure values are present if required
         // Find values in raw submission
@@ -113,6 +142,11 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
         }
     }
 
+    /**
+     * Render field template for Elementor editor
+     * 
+     * @return void
+     */
     public function content_template() {
         ?>
         <div class="csa-elementor-appointment">
@@ -153,7 +187,7 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
      *
      * @return array
      */
-    private function get_services_for_render() {
+    private function get_services_for_render(): array {
         $db = Database::get_instance();
         $stored = $db->get_services();
         $labels = $this->get_service_duration_labels();
@@ -202,7 +236,7 @@ class Appointment extends \ElementorPro\Modules\Forms\Fields\Field_Base {
      *
      * @return array
      */
-    private function get_service_duration_labels() {
+    private function get_service_duration_labels(): array {
         return [
             '900' => '15 minutes',
             '1800' => '30 minutes',

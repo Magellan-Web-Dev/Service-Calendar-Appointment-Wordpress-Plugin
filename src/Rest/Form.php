@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * REST API endpoint for custom form hooks
  *
@@ -24,7 +25,7 @@ class Form {
     /**
      * @return Form
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -40,7 +41,7 @@ class Form {
      *
      * @return void
      */
-    public function register_routes() {
+    public function register_routes(): void {
         register_rest_route(self::REST_NAMESPACE, self::ROUTE_SUBMIT, [
             'methods' => \WP_REST_Server::CREATABLE,
             'callback' => [$this, 'submit_form'],
@@ -54,7 +55,7 @@ class Form {
      * @param \WP_REST_Request $request
      * @return bool
      */
-    public function authorize_request($request) {
+    public function authorize_request(\WP_REST_Request $request): bool {
         return (bool) apply_filters('csa_form_api_permission', true, $request);
     }
 
@@ -64,7 +65,7 @@ class Form {
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
-    public function submit_form($request) {
+    public function submit_form(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
         $params = $request->get_json_params();
         if (empty($params)) {
             $params = $request->get_params();
@@ -115,19 +116,19 @@ class Form {
      * @param array $raw_fields
      * @return object
      */
-    private function build_validation_payload($fields, $raw_fields) {
+    private function build_validation_payload(array $fields, array $raw_fields): object {
         return new class($fields, $raw_fields) {
             public $validation = true;
             private $fields = [];
             private $raw_fields = [];
             private $errors = [];
 
-            public function __construct($fields, $raw_fields) {
+            public function __construct(array $fields, array $raw_fields) {
                 $this->fields = is_array($fields) ? $fields : [];
                 $this->raw_fields = is_array($raw_fields) ? $raw_fields : [];
             }
 
-            public function __get($name) {
+            public function __get(string $name): mixed {
                 if ($name === 'fields') {
                     return $this->fields;
                 }
@@ -137,7 +138,7 @@ class Form {
                 return null;
             }
 
-            public function add_error_message($message) {
+            public function add_error_message(string $message): void {
                 $msg = is_string($message) ? trim($message) : '';
                 if ($msg === '') {
                     return;
@@ -146,7 +147,7 @@ class Form {
                 $this->errors[] = $msg;
             }
 
-            public function get_error_messages() {
+            public function get_error_messages(): array {
                 return $this->errors;
             }
         };

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Submissions class
  *
@@ -56,7 +57,7 @@ class Submissions {
      *
      * @return Submissions
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -70,7 +71,7 @@ class Submissions {
      * @param string $date
      * @return array
      */
-    public function get_appointments_for_date($date, $user_id = null) {
+    public function get_appointments_for_date(string $date, ?int $user_id = null): array {
         global $wpdb;
 
         $db = Database::get_instance();
@@ -162,7 +163,7 @@ class Submissions {
      * @param int $month
      * @return array
      */
-    public function get_appointments_for_month($year, $month, $user_id = null) {
+    public function get_appointments_for_month(int $year, int $month, ?int $user_id = null): array {
         global $wpdb;
 
         $start_date = sprintf('%04d-%02d-01', $year, $month);
@@ -256,7 +257,7 @@ class Submissions {
      * @param string $time H:i or H:i:s
      * @return bool
      */
-    public function is_slot_booked($date, $time, $user_id = null) {
+    public function is_slot_booked(string $date, string $time, ?int $user_id = null): bool {
         global $wpdb;
 
         // normalize time to H:i:s
@@ -322,7 +323,7 @@ class Submissions {
      * @param int $submission_id
      * @return string
      */
-    public function get_submission_edit_url($submission_id) {
+    public function get_submission_edit_url(int $submission_id): string {
         return admin_url('admin.php?page=e-form-submissions&action=view&id=' . intval($submission_id));
     }
 
@@ -333,7 +334,7 @@ class Submissions {
      * @param int $submission_id
      * @return array|null
      */
-    public function get_appointment_by_submission_id($submission_id) {
+    public function get_appointment_by_submission_id(int $submission_id): ?array {
         global $wpdb;
 
         $submission_id = intval($submission_id);

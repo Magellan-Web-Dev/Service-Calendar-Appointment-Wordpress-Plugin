@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Autoloader class for PSR-4 compliant class loading
  *
@@ -35,7 +36,7 @@ class Autoloader {
      *
      * @return void
      */
-    public function register() {
+    public function register(): void {
         spl_autoload_register([$this, 'autoload']);
     }
 
@@ -52,7 +53,7 @@ class Autoloader {
      * @param string $class The fully-qualified class name.
      * @return void
      */
-    private function autoload($class) {
+    private function autoload(string $class): void {
         if (strpos($class, $this->namespace_prefix) !== 0) {
             return;
         }

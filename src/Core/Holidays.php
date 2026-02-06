@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Holiday helper utilities
  *
@@ -19,7 +20,7 @@ class Holidays {
      * @param int $year
      * @return array
      */
-    public static function get_us_holidays_for_year($year) {
+    public static function get_us_holidays_for_year(int $year): array {
         $year = (int) $year;
         $holidays = [];
 
@@ -45,7 +46,7 @@ class Holidays {
      * @param string|null $timezone
      * @return array
      */
-    public static function get_upcoming_us_holidays($timezone = null) {
+    public static function get_upcoming_us_holidays(?string $timezone = null): array {
         $tz = $timezone ? new \DateTimeZone($timezone) : new \DateTimeZone('UTC');
         $now = new \DateTime('now', $tz);
         $year = (int) $now->format('Y');
@@ -84,7 +85,7 @@ class Holidays {
      * @param string $date
      * @return string|null
      */
-    public static function get_us_holiday_key_for_date($date) {
+    public static function get_us_holiday_key_for_date(string $date): ?string {
         if (empty($date)) {
             return null;
         }
@@ -112,7 +113,7 @@ class Holidays {
      * @param \DateTime $date
      * @return array|null
      */
-    private static function holiday_entry($key, $label, $date) {
+    private static function holiday_entry(string $key, string $label, ?\DateTime $date): ?array {
         if (!$date) {
             return null;
         }
@@ -133,7 +134,7 @@ class Holidays {
      * @param int $day
      * @return \DateTime
      */
-    private static function fixed_date($year, $month, $day) {
+    private static function fixed_date(int $year, int $month, int $day): ?\DateTime {
         return \DateTime::createFromFormat('!Y-n-j', sprintf('%04d-%02d-%02d', $year, $month, $day));
     }
 
@@ -146,7 +147,7 @@ class Holidays {
      * @param int $nth
      * @return \DateTime
      */
-    private static function nth_weekday_of_month($year, $month, $weekday, $nth) {
+    private static function nth_weekday_of_month(int $year, int $month, int $weekday, int $nth): ?\DateTime {
         $date = \DateTime::createFromFormat('!Y-n-j', sprintf('%04d-%02d-01', $year, $month));
         if (!$date) {
             return null;
@@ -170,7 +171,7 @@ class Holidays {
      * @param int $weekday
      * @return \DateTime
      */
-    private static function last_weekday_of_month($year, $month, $weekday) {
+    private static function last_weekday_of_month(int $year, int $month, int $weekday): ?\DateTime {
         $date = \DateTime::createFromFormat('!Y-n-j', sprintf('%04d-%02d-01', $year, $month));
         if (!$date) {
             return null;
@@ -193,7 +194,7 @@ class Holidays {
      * @param int $year
      * @return \DateTime
      */
-    private static function observed_date($date, $year) {
+    private static function observed_date(?\DateTime $date, int $year): ?\DateTime {
         if (!$date) {
             return null;
         }
@@ -223,7 +224,7 @@ class Holidays {
      * @param int $days
      * @return \DateTime
      */
-    private static function add_days($date, $days) {
+    private static function add_days(?\DateTime $date, int $days): ?\DateTime {
         if (!$date) {
             return null;
         }

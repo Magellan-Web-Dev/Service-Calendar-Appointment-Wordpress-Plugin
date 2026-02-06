@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Multisite admin settings
  *
@@ -28,7 +29,7 @@ class Multisite {
     /**
      * @return Multisite
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -48,7 +49,7 @@ class Multisite {
      *
      * @return void
      */
-    public function add_multisite_page() {
+    public function add_multisite_page(): void {
         add_submenu_page(
             Calendar::MENU_SLUG,
             __(self::LABEL_MULTISITE, self::TEXT_DOMAIN),
@@ -64,7 +65,7 @@ class Multisite {
      *
      * @return void
      */
-    public function render_multisite_page() {
+    public function render_multisite_page(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -93,7 +94,7 @@ class Multisite {
      *
      * @return void
      */
-    public function handle_save_multisite() {
+    public function handle_save_multisite(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }

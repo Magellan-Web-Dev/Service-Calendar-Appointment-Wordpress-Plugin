@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Main plugin class
  *
@@ -54,7 +55,7 @@ class Plugin {
      *
      * @return Plugin
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -73,7 +74,7 @@ class Plugin {
      *
      * @return void
      */
-    private function init_hooks() {
+    private function init_hooks(): void {
         register_activation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'activate']);
         register_deactivation_hook(CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_DIR . self::PLUGIN_FILE, [$this, 'deactivate']);
 
@@ -90,7 +91,7 @@ class Plugin {
      *
      * @return void
      */
-    public function init() {
+    public function init(): void {
         $db = Core\Database::get_instance();
         $db->maybe_migrate_times_to_utc();
         $db->maybe_backfill_submitted_at_unix();
@@ -119,7 +120,7 @@ class Plugin {
      *
      * @return void
      */
-    public function activate() {
+    public function activate(): void {
         Core\Database::create_tables();
         // schedule daily cleanup if not scheduled
         if (!wp_next_scheduled(self::CLEANUP_HOOK)) {
@@ -132,7 +133,7 @@ class Plugin {
      *
      * @return void
      */
-    public function deactivate() {
+    public function deactivate(): void {
         flush_rewrite_rules();
         // remove scheduled cleanup
         wp_clear_scheduled_hook(self::CLEANUP_HOOK);
@@ -143,7 +144,7 @@ class Plugin {
      *
      * @return void
      */
-    public function daily_cleanup() {
+    public function daily_cleanup(): void {
         $db = Core\Database::get_instance();
         $db->delete_appointments_older_than_months(3);
     }
@@ -156,7 +157,7 @@ class Plugin {
      * @param string $src Script source URL.
      * @return string
      */
-    public function filter_module_script_tag($tag, $handle, $src) {
+    public function filter_module_script_tag(string $tag, string $handle, string $src): string {
         if (!in_array($handle, self::MODULE_SCRIPT_HANDLES, true)) {
             return $tag;
         }
@@ -175,7 +176,7 @@ class Plugin {
      * @param string $file
      * @return array
      */
-    public function add_check_updates_link($links, $file) {
+    public function add_check_updates_link(array $links, string $file): array {
         if (!current_user_can('update_plugins')) {
             return $links;
         }
@@ -196,7 +197,7 @@ class Plugin {
      *
      * @return void
      */
-    public function maybe_handle_manual_update_check() {
+    public function maybe_handle_manual_update_check(): void {
         if (!is_admin() || !current_user_can('update_plugins')) {
             return;
         }
@@ -225,7 +226,7 @@ class Plugin {
      *
      * @return void
      */
-    public function manual_update_notice() {
+    public function manual_update_notice(): void {
         if (!is_admin() || !current_user_can('update_plugins')) {
             return;
         }

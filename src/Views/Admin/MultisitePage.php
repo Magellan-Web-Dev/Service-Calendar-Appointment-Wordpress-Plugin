@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Multisite settings page view
  *
@@ -19,7 +20,7 @@ class MultisitePage {
      * @param array $context
      * @return void
      */
-    public static function render($context) {
+    public static function render(array $context): void {
         $text_domain = isset($context['text_domain']) ? $context['text_domain'] : 'calendar-service-appointments-form';
         $label = isset($context['label']) ? $context['label'] : 'Multisite';
         $mode = isset($context['mode']) ? $context['mode'] : 'standalone';

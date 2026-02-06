@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Appointment shortcode view
  *
@@ -19,7 +20,7 @@ class AppointmentField {
      * @param array $context
      * @return string
      */
-    public static function render($context) {
+    public static function render(array $context): string {
         $text_domain = isset($context['text_domain']) ? $context['text_domain'] : 'calendar-service-appointments-form';
         $label = isset($context['label']) ? $context['label'] : '';
         $type = isset($context['type']) ? $context['type'] : 'time';

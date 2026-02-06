@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Rescheduling-related AJAX handlers.
  *
@@ -22,7 +23,7 @@ class Rescheduling extends BaseHandler {
      *
      * @return void
      */
-    public function reschedule_appointment() {
+    public function reschedule_appointment(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
         if (!current_user_can(self::CAPABILITY)) {

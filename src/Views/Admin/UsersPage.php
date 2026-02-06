@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Admin users page view
  *
@@ -21,7 +22,7 @@ class UsersPage {
      * @param array $context
      * @return void
      */
-    public static function render($context) {
+    public static function render(array $context): void {
         $text_domain = isset($context['text_domain']) ? $context['text_domain'] : 'calendar-service-appointments-form';
         $users = isset($context['users']) && is_array($context['users']) ? $context['users'] : [];
         $enabled = isset($context['enabled']) && is_array($context['enabled']) ? $context['enabled'] : [];

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Availability-related AJAX handlers.
  *
@@ -23,7 +24,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function get_day_details() {
+    public function get_day_details(): void {
         if (defined('WP_DEBUG') && WP_DEBUG) {
         }
         $prev_handler = set_error_handler(function ($severity, $message, $file, $line) {
@@ -75,7 +76,7 @@ class Availability extends BaseHandler {
      * @param string $date
      * @return array|\WP_Error
      */
-    public function build_day_details_payload($date, $user_id = null) {
+    public function build_day_details_payload(string $date, ?int $user_id = null): array|\WP_Error {
         $date = is_string($date) ? trim($date) : '';
         if ($date === '') {
             return new \WP_Error('csa_invalid_date', __('Invalid date', self::TEXT_DOMAIN), ['status' => 400]);
@@ -219,7 +220,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function get_available_times() {
+    public function get_available_times(): void {
         if (!$this->verify_optional_nonce()) {
             wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
         }
@@ -271,7 +272,7 @@ class Availability extends BaseHandler {
      * @param int|null $user_id
      * @return array
      */
-    public function build_available_times($date, $duration_seconds, $user_id = null) {
+    public function build_available_times(string $date, int $duration_seconds, ?int $user_id = null): array {
         $date = is_string($date) ? trim($date) : '';
         if ($date === '') {
             return [];
@@ -312,6 +313,9 @@ class Availability extends BaseHandler {
 
         $results = [];
         foreach ($hours as $time) {
+            if (!$this->is_time_after_min_lead($date, $time, 3)) {
+                continue;
+            }
             if ($this->is_time_range_available($date, $time, $slots_needed, $default_hours, $overrides, $holiday_closed, $blocked_set, $booked_set, $hours_set)) {
                 $label = $this->format_time_label($date, $time);
                 $results[] = [
@@ -330,7 +334,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function get_available_months() {
+    public function get_available_months(): void {
         if (!$this->verify_optional_nonce()) {
             wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
         }
@@ -380,7 +384,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function get_available_days() {
+    public function get_available_days(): void {
         if (!$this->verify_optional_nonce()) {
             wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
         }
@@ -420,7 +424,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function resolve_anyone_user() {
+    public function resolve_anyone_user(): void {
         if (!$this->verify_optional_nonce()) {
             wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
         }
@@ -460,7 +464,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function filter_anyone_times() {
+    public function filter_anyone_times(): void {
         if (!$this->verify_optional_nonce()) {
             wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
         }
@@ -499,7 +503,7 @@ class Availability extends BaseHandler {
      *
      * @return void
      */
-    public function resolve_anyone_times() {
+    public function resolve_anyone_times(): void {
         if (!$this->verify_optional_nonce()) {
             wp_send_json_error(['message' => __('Invalid request.', self::TEXT_DOMAIN)]);
         }
@@ -546,7 +550,7 @@ class Availability extends BaseHandler {
      * @param array $times
      * @return array
      */
-    private function resolve_anyone_times_for_date($date, $duration_seconds, $times, $service = '', $user_ids = null) {
+    private function resolve_anyone_times_for_date(string $date, int $duration_seconds, array $times, string $service = '', ?array $user_ids = null): array {
         $resolved = [];
         $allowed_user_ids = $user_ids !== null ? $user_ids : $this->get_allowed_user_ids_for_service($service);
         foreach ($times as $time) {
@@ -586,7 +590,7 @@ class Availability extends BaseHandler {
      * @param mixed $times
      * @return array
      */
-    private function normalize_times_array($times) {
+    private function normalize_times_array(mixed $times): array {
         if (is_string($times)) {
             $raw = wp_unslash($times);
             $decoded = json_decode($raw, true);
@@ -625,7 +629,7 @@ class Availability extends BaseHandler {
      * @param int $duration_seconds
      * @return array
      */
-    public function build_available_times_anyone($date, $duration_seconds, $user_ids = null) {
+    public function build_available_times_anyone(string $date, int $duration_seconds, ?array $user_ids = null): array {
         if ($user_ids === null) {
             $user_ids = $this->get_selectable_user_ids();
         }
@@ -651,6 +655,9 @@ class Availability extends BaseHandler {
         $slots_needed = $this->get_slots_needed($duration_seconds);
         $times = [];
         foreach ($this->get_business_hours() as $time) {
+            if (!$this->is_time_after_min_lead($date, $time, 3)) {
+                continue;
+            }
             if ($this->is_any_user_available_for_time($date, $time, $duration_seconds, $user_ids)) {
                 $label = $this->format_time_label($date, $time);
                 $times[] = [
@@ -669,7 +676,7 @@ class Availability extends BaseHandler {
      *
      * @return bool
      */
-    private function verify_optional_nonce() {
+    private function verify_optional_nonce(): bool {
         if (empty($_REQUEST['nonce'])) {
             return true;
         }
@@ -683,7 +690,7 @@ class Availability extends BaseHandler {
      * @param int $slots_needed
      * @return array
      */
-    public function build_available_days_anyone($month, $slots_needed, $duration_seconds = null, $user_ids = null) {
+    public function build_available_days_anyone(string $month, int $slots_needed, ?int $duration_seconds = null, ?array $user_ids = null): array {
         if ($user_ids === null) {
             $user_ids = $this->get_selectable_user_ids();
         }
@@ -734,7 +741,7 @@ class Availability extends BaseHandler {
      *
      * @return array
      */
-    private function get_selectable_user_ids() {
+    private function get_selectable_user_ids(): array {
         $enabled_ids = Access::get_bookable_user_ids();
         return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
     }
@@ -747,7 +754,7 @@ class Availability extends BaseHandler {
      * @param int $duration_seconds
      * @return array
      */
-    private function get_available_user_ids_for_slot($date, $time, $duration_seconds, $user_ids = null) {
+    private function get_available_user_ids_for_slot(string $date, string $time, int $duration_seconds, ?array $user_ids = null): array {
         $available = [];
         if ($user_ids === null) {
             $user_ids = $this->get_selectable_user_ids();
@@ -769,7 +776,7 @@ class Availability extends BaseHandler {
      * @param array $user_ids
      * @return bool
      */
-    private function is_any_user_available_for_time($date, $time, $duration_seconds, $user_ids) {
+    private function is_any_user_available_for_time(string $date, string $time, int $duration_seconds, ?array $user_ids): bool {
         if ($user_ids === null) {
             $user_ids = $this->get_selectable_user_ids();
         }
@@ -787,7 +794,7 @@ class Availability extends BaseHandler {
      * @param string $service
      * @return array
      */
-    private function get_allowed_user_ids_for_service($service) {
+    private function get_allowed_user_ids_for_service(string $service): array {
         if (!is_string($service) || $service === '') {
             return $this->get_selectable_user_ids();
         }
@@ -802,7 +809,7 @@ class Availability extends BaseHandler {
      * @param int|null $user_id
      * @return array
      */
-    public function build_available_days($month, $slots_needed, $user_id = null) {
+    public function build_available_days(string $month, int $slots_needed, ?int $user_id = null): array {
         list($year, $mon) = array_map('intval', explode('-', $month));
 
         $tz = $this->get_timezone_object();
@@ -839,12 +846,15 @@ class Availability extends BaseHandler {
      * @param int|null $user_id
      * @return bool
      */
-    public function check_time_range_available($date, $start_time, $duration_seconds, $user_id = null) {
+    public function check_time_range_available(string $date, string $start_time, int $duration_seconds, ?int $user_id = null): bool {
         $date = is_string($date) ? trim($date) : '';
         if ($date === '') {
             return false;
         }
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            return false;
+        }
+        if (!$this->is_time_after_min_lead($date, $start_time, 3)) {
             return false;
         }
 

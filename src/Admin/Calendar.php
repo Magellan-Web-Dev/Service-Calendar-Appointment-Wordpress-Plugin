@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Calendar class
  *
@@ -87,7 +88,7 @@ class Calendar {
      *
      * @return Calendar
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -111,7 +112,7 @@ class Calendar {
      *
      * @return void
      */
-    public function add_calendar_page() {
+    public function add_calendar_page(): void {
         $is_child = Multisite::is_child();
         $menu_callback = [$this, 'render_calendar_page'];
         if ($is_child && current_user_can('manage_options')) {
@@ -132,6 +133,11 @@ class Calendar {
             return;
         }
 
+        /**
+         * Submenus
+         */
+
+        // Calendar
         add_submenu_page(
             self::MENU_SLUG,
             __('Calendar', self::TEXT_DOMAIN),
@@ -141,6 +147,7 @@ class Calendar {
             [$this, 'render_calendar_page']
         );
 
+        // Overview
         add_submenu_page(
             self::MENU_SLUG,
             __(self::LABEL_OVERVIEW, self::TEXT_DOMAIN),
@@ -150,6 +157,7 @@ class Calendar {
             [$this, 'render_overview_page']
         );
 
+        // Services
         add_submenu_page(
             self::MENU_SLUG,
             __(self::LABEL_SERVICES, self::TEXT_DOMAIN),
@@ -159,6 +167,7 @@ class Calendar {
             [$this, 'render_services_page']
         );
 
+        // Users
         add_submenu_page(
             self::MENU_SLUG,
             __('Users', self::TEXT_DOMAIN),
@@ -168,6 +177,7 @@ class Calendar {
             [$this, 'render_users_page']
         );
 
+        // Shortcodes
         add_submenu_page(
             self::MENU_SLUG,
             __(self::LABEL_SHORTCODES, self::TEXT_DOMAIN),
@@ -177,6 +187,7 @@ class Calendar {
             [$this, 'render_shortcodes_page']
         );
 
+        // Delete Appointments
         add_submenu_page(
             self::MENU_SLUG,
             __(self::LABEL_DELETE_APPOINTMENTS, self::TEXT_DOMAIN),
@@ -193,7 +204,7 @@ class Calendar {
      * @param string $hook Current admin page hook.
      * @return void
      */
-    public function enqueue_admin_scripts($hook) {
+    public function enqueue_admin_scripts(string $hook): void {
         if (Multisite::is_child()) {
             return;
         }
@@ -289,7 +300,7 @@ class Calendar {
      *
      * @return void
      */
-    public function render_calendar_page() {
+    public function render_calendar_page(): void {
         $current_user = wp_get_current_user();
         $is_admin = current_user_can('manage_options');
         $current_user_id = $current_user ? intval($current_user->ID) : 0;
@@ -302,8 +313,8 @@ class Calendar {
             wp_die(esc_html__('You do not have access to view this calendar.', self::TEXT_DOMAIN));
         }
 
-        $current_month = isset($_GET['month']) ? intval($_GET['month']) : date('n');
-        $current_year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+        $current_month = isset($_GET['month']) ? intval($_GET['month']) : (int) date('n');
+        $current_year = isset($_GET['year']) ? intval($_GET['year']) : (int) date('Y');
         $selected_user_id = $this->resolve_selected_user_id($is_admin, $current_user_id);
 
         // Prevent navigating to months older than 3 months ago
@@ -354,7 +365,7 @@ class Calendar {
      *
      * @return void
      */
-    public function render_services_page() {
+    public function render_services_page(): void {
         $db = Database::get_instance();
         $services = $db->get_services();
         $saved = isset($_GET['csa_services_saved']) ? (int) $_GET['csa_services_saved'] : 0;
@@ -373,7 +384,7 @@ class Calendar {
      *
      * @return void
      */
-    public function render_users_page() {
+    public function render_users_page(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -398,7 +409,7 @@ class Calendar {
      *
      * @return void
      */
-    public function render_overview_page() {
+    public function render_overview_page(): void {
         if (!current_user_can('read')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -415,7 +426,7 @@ class Calendar {
      *
      * @return void
      */
-    public function render_shortcodes_page() {
+    public function render_shortcodes_page(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -431,7 +442,7 @@ class Calendar {
      *
      * @return void
      */
-    public function render_delete_appointments_page() {
+    public function render_delete_appointments_page(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -456,7 +467,7 @@ class Calendar {
      *
      * @return void
      */
-    public function handle_save_services() {
+    public function handle_save_services(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -542,7 +553,7 @@ class Calendar {
      *
      * @return void
      */
-    public function handle_save_users() {
+    public function handle_save_users(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -607,7 +618,7 @@ class Calendar {
      *
      * @return void
      */
-    public function handle_delete_user_appointments() {
+    public function handle_delete_user_appointments(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -641,7 +652,7 @@ class Calendar {
      *
      * @return void
      */
-    public function handle_delete_all_appointments() {
+    public function handle_delete_all_appointments(): void {
         if (!current_user_can('manage_options')) {
             wp_die(esc_html__('Unauthorized', self::TEXT_DOMAIN));
         }
@@ -672,7 +683,7 @@ class Calendar {
      * @param int $year Year number.
      * @return array
      */
-    private function build_calendar_cells($month, $year, $user_id = null) {
+    private function build_calendar_cells(int $month, int $year, ?int $user_id = null): array {
         $first_day = mktime(0, 0, 0, $month, 1, $year);
         $days_in_month = date('t', $first_day);
         $day_of_week = date('w', $first_day);
@@ -775,7 +786,7 @@ class Calendar {
      *
      * @return array
      */
-    private function get_business_hours() {
+    private function get_business_hours(): array {
         return [
             '06:00', '06:30', '07:00', '07:30',
             '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
@@ -790,7 +801,7 @@ class Calendar {
      *
      * @return array
      */
-    private function get_service_duration_options() {
+    private function get_service_duration_options(): array {
         return [
             '900' => '15 minutes',
             '1800' => '30 minutes',
@@ -818,7 +829,7 @@ class Calendar {
      * @param int $month Month.
      * @return array Array of appointments.
      */
-    private function get_appointments_for_month($year, $month, $user_id = null) {
+    private function get_appointments_for_month(int $year, int $month, ?int $user_id = null): array {
         $submissions = Submissions::get_instance();
         return $submissions->get_appointments_for_month($year, $month, $user_id);
     }
@@ -828,7 +839,7 @@ class Calendar {
      *
      * @return array
      */
-    private function get_timezone_options() {
+    private function get_timezone_options(): array {
         return [
             'America/New_York' => 'Eastern',
             'America/Chicago' => 'Central',
@@ -846,7 +857,7 @@ class Calendar {
      * @param string $timezone
      * @return string
      */
-    private function get_timezone_label($timezone) {
+    private function get_timezone_label(string $timezone): string {
         $options = $this->get_timezone_options();
         if (isset($options[$timezone])) {
             return $options[$timezone];
@@ -859,7 +870,7 @@ class Calendar {
      *
      * @return string
      */
-    private function get_timezone_string() {
+    private function get_timezone_string(): string {
         $db = Database::get_instance();
         $timezone = $db->get_timezone_string();
         $options = $this->get_timezone_options();
@@ -874,7 +885,7 @@ class Calendar {
      *
      * @return string
      */
-    private function get_today_date() {
+    private function get_today_date(): string {
         $tz = new \DateTimeZone($this->get_timezone_string());
         $now = new \DateTime('now', $tz);
         return $now->format('Y-m-d');
@@ -887,7 +898,7 @@ class Calendar {
      * @param int $current_user_id
      * @return int
      */
-    private function resolve_selected_user_id($is_admin, $current_user_id) {
+    private function resolve_selected_user_id(bool $is_admin, int $current_user_id): int {
         $current_user_id = intval($current_user_id);
         $selected_user_id = $current_user_id;
         $bookable_ids = [];

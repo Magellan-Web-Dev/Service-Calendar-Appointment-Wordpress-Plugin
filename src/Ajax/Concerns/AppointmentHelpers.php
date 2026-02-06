@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Shared appointment helper methods for AJAX handlers.
  *
@@ -21,7 +22,7 @@ trait AppointmentHelpers {
      *
      * @return array Array of time strings.
      */
-    protected function get_business_hours() {
+    protected function get_business_hours(): array {
         return [
             '06:00', '06:30', '07:00', '07:30',
             '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
@@ -36,7 +37,7 @@ trait AppointmentHelpers {
      *
      * @return string
      */
-    protected function get_timezone_label() {
+    protected function get_timezone_label(): string {
         $timezone = $this->get_timezone_string();
         $labels = $this->get_timezone_labels();
         return isset($labels[$timezone]) ? $labels[$timezone] : $timezone;
@@ -47,7 +48,7 @@ trait AppointmentHelpers {
      *
      * @return array
      */
-    protected function get_timezone_labels() {
+    protected function get_timezone_labels(): array {
         return [
             'America/New_York' => 'Eastern',
             'America/Chicago' => 'Central',
@@ -64,7 +65,7 @@ trait AppointmentHelpers {
      *
      * @return string
      */
-    protected function get_timezone_string() {
+    protected function get_timezone_string(): string {
         $db = Database::get_instance();
         return $db->get_timezone_string();
     }
@@ -74,12 +75,42 @@ trait AppointmentHelpers {
      *
      * @return \DateTimeZone|null
      */
-    protected function get_timezone_object() {
+    protected function get_timezone_object(): ?\DateTimeZone {
         try {
             return new \DateTimeZone($this->get_timezone_string());
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    /**
+     * Check whether a date/time is at least N hours from now in the configured timezone.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $min_hours
+     * @return bool
+     */
+    protected function is_time_after_min_lead(string $date, string $time, int $min_hours = 3): bool {
+        $date = trim($date);
+        $time = trim($time);
+        if ($date === '' || $time === '' || $min_hours <= 0) {
+            return false;
+        }
+        if (strlen($time) === 5) {
+            $time .= ':00';
+        }
+        $tz = $this->get_timezone_object() ?: new \DateTimeZone('UTC');
+        $slot = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time, $tz);
+        if (!$slot) {
+            return false;
+        }
+        $now = new \DateTimeImmutable('now', $tz);
+        $min = $now->modify('+' . $min_hours . ' hours');
+        if (!$min) {
+            return false;
+        }
+        return $slot >= $min;
     }
 
     /**
@@ -89,7 +120,7 @@ trait AppointmentHelpers {
      * @param string $time
      * @return string
      */
-    protected function format_time_label($date, $time) {
+    protected function format_time_label(string $date, string $time): string {
         $tz = $this->get_timezone_object();
         $time = strlen($time) === 5 ? $time . ':00' : $time;
         $dt = \DateTime::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time, $tz ?: new \DateTimeZone('UTC'));
@@ -106,7 +137,7 @@ trait AppointmentHelpers {
      * @param string $key
      * @return array
      */
-    protected function build_time_set($slots, $key = 'block_time') {
+    protected function build_time_set(array $slots, string $key = 'block_time'): array {
         $set = [];
         foreach ($slots as $slot) {
             if (!is_array($slot) || !isset($slot[$key])) {
@@ -125,7 +156,7 @@ trait AppointmentHelpers {
      * @param array $service_duration_map
      * @return array
      */
-    protected function build_booked_set($appointments, $service_duration_map) {
+    protected function build_booked_set(array $appointments, array $service_duration_map): array {
         $set = [];
         foreach ($appointments as $appt) {
             if (!is_array($appt) || empty($appt['time'])) {
@@ -153,7 +184,7 @@ trait AppointmentHelpers {
      *
      * @return array
      */
-    protected function get_service_duration_map() {
+    protected function get_service_duration_map(): array {
         $db = Database::get_instance();
         $services = $db->get_services();
         $map = [];
@@ -178,7 +209,7 @@ trait AppointmentHelpers {
      * @param array $service_duration_map
      * @return int
      */
-    protected function get_appointment_duration_seconds($appointment, $service_duration_map) {
+    protected function get_appointment_duration_seconds(array $appointment, array $service_duration_map): int {
         if (isset($appointment['duration_seconds']) && is_numeric($appointment['duration_seconds'])) {
             return (int) $appointment['duration_seconds'];
         }
@@ -228,7 +259,7 @@ trait AppointmentHelpers {
      * @param string $value
      * @return string
      */
-    protected function normalize_service_title($value) {
+    protected function normalize_service_title(mixed $value): string {
         if (!is_string($value)) {
             return '';
         }
@@ -257,7 +288,7 @@ trait AppointmentHelpers {
      * @param string $value
      * @return string
      */
-    protected function normalize_service_key($value) {
+    protected function normalize_service_key(mixed $value): string {
         $clean = $this->normalize_service_title($value);
         if ($clean === '') {
             return '';
@@ -273,7 +304,7 @@ trait AppointmentHelpers {
      * @param string $value
      * @return string
      */
-    protected function extract_service_from_value($value) {
+    protected function extract_service_from_value(mixed $value): string {
         if (!is_string($value)) {
             return '';
         }
@@ -296,7 +327,7 @@ trait AppointmentHelpers {
      * @param int $duration_seconds
      * @return int
      */
-    protected function get_slots_needed($duration_seconds) {
+    protected function get_slots_needed(int $duration_seconds): int {
         $duration_seconds = max(0, (int) $duration_seconds);
         if ($duration_seconds <= 0) {
             return 1;
@@ -311,7 +342,7 @@ trait AppointmentHelpers {
      * @param int $minutes
      * @return string|null
      */
-    protected function add_minutes($time, $minutes) {
+    protected function add_minutes(string $time, int $minutes): ?string {
         $dt = \DateTime::createFromFormat('H:i', $time);
         if (!$dt) {
             return null;
@@ -326,7 +357,7 @@ trait AppointmentHelpers {
      * @param string $time
      * @return string
      */
-    protected function normalize_time_value($time) {
+    protected function normalize_time_value(mixed $time): string {
         if (!is_string($time)) {
             return '';
         }
@@ -351,7 +382,7 @@ trait AppointmentHelpers {
      * @param int $duration_seconds
      * @return array
      */
-    public function build_slot_times_for_duration($start_time, $duration_seconds) {
+    public function build_slot_times_for_duration(string $start_time, int $duration_seconds): array {
         $start_time = $this->normalize_time_value($start_time);
         if ($start_time === '') {
             return [];
@@ -384,7 +415,7 @@ trait AppointmentHelpers {
      * @param array $hours_set
      * @return bool
      */
-    protected function is_time_range_available($date, $start_time, $slots_needed, $default_hours, $overrides, $holiday_closed, $blocked_set, $booked_set, $hours_set) {
+    protected function is_time_range_available(string $date, string $start_time, int $slots_needed, array $default_hours, array $overrides, bool $holiday_closed, array $blocked_set, array $booked_set, array $hours_set): bool {
         if ($holiday_closed) {
             return false;
         }
@@ -426,7 +457,7 @@ trait AppointmentHelpers {
      * @param array $hours_set
      * @return bool
      */
-    protected function is_time_range_open($start_time, $slots_needed, $blocked_set, $booked_set, $hours_set) {
+    protected function is_time_range_open(string $start_time, int $slots_needed, array $blocked_set, array $booked_set, array $hours_set): bool {
         for ($i = 0; $i < $slots_needed; $i++) {
             $slot_time = $i === 0 ? $start_time : $this->add_minutes($start_time, 30 * $i);
             if (!$slot_time || !isset($hours_set[$slot_time])) {
@@ -445,7 +476,7 @@ trait AppointmentHelpers {
      * @param bool $allow_admin_override
      * @return int|null
      */
-    protected function resolve_request_user_id($allow_admin_override = false) {
+    protected function resolve_request_user_id(bool $allow_admin_override = false): ?int {
         if (!empty($_POST['user'])) {
             $user_id = Access::resolve_enabled_user_id(sanitize_text_field($_POST['user']));
             return $user_id ?: null;

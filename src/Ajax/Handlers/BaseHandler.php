@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Base AJAX handler with shared constants and helpers.
  *
@@ -43,7 +44,7 @@ abstract class BaseHandler {
      *
      * @return string
      */
-    protected function get_capability() {
+    protected function get_capability(): string {
         return self::CAPABILITY;
     }
 }

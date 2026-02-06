@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * REST API endpoints for multisite sync
  *
@@ -33,7 +34,7 @@ class Sync {
     /**
      * @return Sync
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -49,7 +50,7 @@ class Sync {
      *
      * @return void
      */
-    public function register_routes() {
+    public function register_routes(): void {
         register_rest_route(self::REST_NAMESPACE, self::ROUTE_SERVICES, [
             'methods' => \WP_REST_Server::READABLE,
             'callback' => [$this, 'get_services'],
@@ -130,7 +131,7 @@ class Sync {
      * @param \WP_REST_Request $request
      * @return bool|\WP_Error
      */
-    public function authorize_request($request) {
+    public function authorize_request(\WP_REST_Request $request): bool|\WP_Error {
         if (!Multisite::is_master()) {
             return new \WP_Error('csa_sync_disabled', __('Sync is not enabled on this site.', 'calendar-service-appointments-form'), ['status' => 404]);
         }
@@ -159,7 +160,7 @@ class Sync {
      *
      * @return \WP_REST_Response
      */
-    public function get_services() {
+    public function get_services(): \WP_REST_Response {
         $services = Database::get_instance()->get_services();
         return rest_ensure_response(['services' => is_array($services) ? $services : []]);
     }
@@ -170,7 +171,7 @@ class Sync {
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
-    public function get_available_times($request) {
+    public function get_available_times(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
         $date = $request->get_param('date');
         $duration = (int) $request->get_param('duration_seconds');
         $username = $request->get_param('user');
@@ -197,7 +198,7 @@ class Sync {
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
-    public function get_available_days($request) {
+    public function get_available_days(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
         $month = $request->get_param('month');
         $duration = (int) $request->get_param('duration_seconds');
         $username = $request->get_param('user');
@@ -224,7 +225,7 @@ class Sync {
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
-    public function book_appointment($request) {
+    public function book_appointment(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
         $date = $request->get_param('date');
         $time = $request->get_param('time');
         $service = $request->get_param('service');
@@ -311,7 +312,7 @@ class Sync {
         ]);
     }
 
-    private function resolve_user_id_from_submission($submission_data) {
+    private function resolve_user_id_from_submission(mixed $submission_data): int {
         if (is_array($submission_data)) {
             if (!empty($submission_data['csa_user']) && !Access::is_anyone_username($submission_data['csa_user'])) {
                 return Access::resolve_enabled_user_id($submission_data['csa_user']);
@@ -323,15 +324,15 @@ class Sync {
         return Access::get_default_admin_id();
     }
 
-    private function is_valid_date($date) {
+    private function is_valid_date(mixed $date): bool {
         return is_string($date) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date);
     }
 
-    private function is_valid_month($month) {
+    private function is_valid_month(mixed $month): bool {
         return is_string($month) && preg_match('/^\d{4}-\d{2}$/', $month);
     }
 
-    private function get_duration_for_service($service) {
+    private function get_duration_for_service(?string $service): int {
         if (!is_string($service) || $service === '') {
             return 0;
         }
@@ -353,7 +354,7 @@ class Sync {
         return 0;
     }
 
-    private function normalize_service_key($value) {
+    private function normalize_service_key(mixed $value): string {
         $value = trim((string) $value);
         if ($value === '') {
             return '';

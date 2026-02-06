@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * GitHub updater integration.
  *
@@ -43,7 +44,12 @@ class GitHubUpdater {
         add_filter('upgrader_post_install', [self::class, 'normalize_folder_after_install'], 10, 3);
     }
 
-    public static function check_for_update($transient) {
+    /**
+     * Checks for plugin updates.
+     * 
+     * @param false|object|array $transient The result from another plugin's filter, or false if none.
+     */
+    public static function check_for_update(mixed $transient): mixed {
         if (empty($transient) || empty($transient->checked)) {
             return $transient;
         }
@@ -72,7 +78,13 @@ class GitHubUpdater {
         return $transient;
     }
 
-    public static function plugins_api($result, $action, $args) {
+    /**
+     * Provides plugin information for the "View version x details" popup in the updates screen.
+     * 
+     * @param false|object|array $result The result from another plugin's filter, or false if none.
+     * @param string $action The type of information being requested. We only handle 'plugin
+     */
+    public static function plugins_api(mixed $result, string $action, mixed $args): mixed {
         if ($action !== 'plugin_information' || empty($args->slug) || $args->slug !== self::PLUGIN_SLUG) {
             return $result;
         }
@@ -96,6 +108,11 @@ class GitHubUpdater {
         ];
     }
 
+    /**
+     * Fetches the latest release info from GitHub, with caching to avoid rate limits.
+     * 
+     * @return array|null Returns an array with 'tag', 'version', 'zip_url', and 'html_url' keys, or null on failure.
+     */
     private static function get_latest_release(): ?array {
         $cached = get_site_transient(self::CACHE_KEY);
         if (is_array($cached)) {
@@ -188,7 +205,7 @@ class GitHubUpdater {
      * Safety net: if WordPress still ends up installing under a GitHub-generated folder,
      * move it back to the desired folder.
      */
-    public static function normalize_folder_after_install($response, $hook_extra, $result) {
+    public static function normalize_folder_after_install(mixed $response, mixed $hook_extra, mixed $result): mixed {
         if (empty($hook_extra['type']) || $hook_extra['type'] !== 'plugin') {
             return $response;
         }
@@ -266,6 +283,15 @@ class GitHubUpdater {
         return $response;
     }
 
+    /**
+     * If the plugin is installed under a GitHub-generated folder, move it back to the desired folder.
+     * 
+     * @see normalize_folder_after_install
+     * This can be called on admin init to catch any cases where the folder is wrong, even if not during an update.
+     * This is a safety net in case something goes wrong during the update process and leaves the plugin in the wrong folder.
+     * 
+     * @see force_destination_folder
+     */
     public static function normalize_plugin_folder(): void {
         $desired_folder = self::DESIRED_FOLDER;
         $plugin_file = self::PLUGIN_FILE;

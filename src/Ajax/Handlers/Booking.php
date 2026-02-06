@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Booking-related AJAX handlers.
  *
@@ -22,7 +23,7 @@ class Booking extends BaseHandler {
      *
      * @return void
      */
-    public function delete_appointment() {
+    public function delete_appointment(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
         if (!current_user_can(self::CAPABILITY)) {
@@ -56,7 +57,7 @@ class Booking extends BaseHandler {
      *
      * @return void
      */
-    public function create_custom_appointment() {
+    public function create_custom_appointment(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
         if (!current_user_can(self::CAPABILITY)) {
@@ -151,7 +152,7 @@ class Booking extends BaseHandler {
      *
      * @return void
      */
-    public function fetch_submission_values() {
+    public function fetch_submission_values(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
         if (!current_user_can(self::CAPABILITY)) {
@@ -188,7 +189,7 @@ class Booking extends BaseHandler {
      *
      * @return void
      */
-    public function block_time_slot() {
+    public function block_time_slot(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
         if (!current_user_can(self::CAPABILITY)) {
@@ -218,7 +219,7 @@ class Booking extends BaseHandler {
      *
      * @return void
      */
-    public function unblock_time_slot() {
+    public function unblock_time_slot(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
 
         if (!current_user_can(self::CAPABILITY)) {
@@ -246,7 +247,7 @@ class Booking extends BaseHandler {
     /**
      * AJAX: get weekly availability
      */
-    public function get_weekly_availability() {
+    public function get_weekly_availability(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
         if (!current_user_can(self::CAPABILITY)) {
             wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
@@ -261,7 +262,7 @@ class Booking extends BaseHandler {
     /**
      * AJAX: save weekly availability
      */
-    public function save_weekly_availability() {
+    public function save_weekly_availability(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
         if (!current_user_can(self::CAPABILITY)) {
             wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
@@ -290,7 +291,7 @@ class Booking extends BaseHandler {
     /**
      * AJAX: save timezone selection
      */
-    public function save_timezone() {
+    public function save_timezone(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
         if (!current_user_can(self::CAPABILITY)) {
             wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
@@ -318,7 +319,7 @@ class Booking extends BaseHandler {
     /**
      * AJAX: save holiday availability
      */
-    public function save_holiday_availability() {
+    public function save_holiday_availability(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
         if (!current_user_can(self::CAPABILITY)) {
             wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);
@@ -347,7 +348,7 @@ class Booking extends BaseHandler {
     /**
      * AJAX: set manual override for a specific date/time
      */
-    public function set_manual_override() {
+    public function set_manual_override(): void {
         check_ajax_referer(self::NONCE_ACTION, 'nonce');
         if (!current_user_can(self::CAPABILITY)) {
             wp_send_json_error(['message' => __('Unauthorized', self::TEXT_DOMAIN)]);

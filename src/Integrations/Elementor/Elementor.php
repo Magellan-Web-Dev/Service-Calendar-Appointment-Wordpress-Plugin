@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Elementor class
  *
@@ -48,7 +49,7 @@ class Elementor {
      *
      * @return Elementor
      */
-    public static function get_instance() {
+    public static function get_instance(): self {
         if (null === self::$instance) {
             self::$instance = new self();
         }
@@ -76,7 +77,7 @@ class Elementor {
     /**
      * Attempt to register fields on several hooks as a fallback
      */
-    public function maybe_register_fields() {
+    public function maybe_register_fields(): void {
         // attempt registration when possible
 
         // If Elementor Pro forms module is available, try to register via Module instance
@@ -109,7 +110,7 @@ class Elementor {
      *
      * @return void
      */
-    public function init_elementor_integration() {
+    public function init_elementor_integration(): void {
         if (defined('WP_DEBUG') && WP_DEBUG) {
         }
         // Only hook into form processing to validate appointment fields submitted via shortcode
@@ -122,7 +123,7 @@ class Elementor {
      * @param object $form_module Elementor form module.
      * @return void
      */
-    public function register_appointment_fields($form_module) {
+    public function register_appointment_fields(object $form_module): void {
         // register field types with Elementor Pro forms module
         if (defined('WP_DEBUG') && WP_DEBUG) {
         }
@@ -146,7 +147,7 @@ class Elementor {
      *
      * @return void
      */
-    public function enqueue_frontend_scripts() {
+    public function enqueue_frontend_scripts(): void {
         if (!class_exists('\Elementor\Plugin')) {
             return;
         }
@@ -169,7 +170,7 @@ class Elementor {
      *
      * @return void
      */
-    private function enqueue_scripts() {
+    private function enqueue_scripts(): void {
         wp_enqueue_style(self::FRONTEND_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/css/frontend.css', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION);
         wp_enqueue_script(self::FRONTEND_HANDLE, CALENDAR_SERVICE_APPOINTMENTS_FORM_PLUGIN_URL . 'assets/js/frontend-booking.js', [], CALENDAR_SERVICE_APPOINTMENTS_FORM_VERSION, true);
         wp_script_add_data(self::FRONTEND_HANDLE, 'type', 'module');
@@ -183,7 +184,7 @@ class Elementor {
     /**
      * Enqueue editor scripts for Elementor editor to register field type in UI
      */
-    public function enqueue_editor_scripts() {
+    public function enqueue_editor_scripts(): void {
         // Load only in Elementor editor
         if (!defined('ELEMENTOR_VERSION')) {
             return;
@@ -200,7 +201,7 @@ class Elementor {
      * @param object $ajax_handler AJAX handler.
      * @return void
      */
-    public function process_appointment_form($record, $ajax_handler) {
+    public function process_appointment_form(object $record, object $ajax_handler): void {
         $raw_fields_original = $record->get('fields');
         $raw_fields = $this->sanitize_prefixed_props($raw_fields_original);
         if (method_exists($record, 'set')) {
@@ -293,6 +294,10 @@ class Elementor {
                 $this->add_blocking_error($record, $ajax_handler, __('Please select both date and time for your appointment.', self::TEXT_DOMAIN));
                 return;
             }
+            if (!$this->meets_min_lead_time($appointment_date, $normalized_time, 3)) {
+                $this->add_blocking_error($record, $ajax_handler, __('Please choose a time at least 3 hours from now.', self::TEXT_DOMAIN));
+                return;
+            }
 
             $submission_data = $this->build_submission_data($raw_fields);
             if ($service_title !== '' && !isset($submission_data['csa_service'])) {
@@ -308,6 +313,11 @@ class Elementor {
                 return;
             }
 
+            return;
+        }
+
+        if (!$this->meets_min_lead_time($appointment_date, $appointment_time, 3)) {
+            $this->add_blocking_error($record, $ajax_handler, __('Please choose a time at least 3 hours from now.', self::TEXT_DOMAIN));
             return;
         }
 
@@ -354,7 +364,7 @@ class Elementor {
      * @param object $ajax_handler
      * @return void
      */
-    public function validate_appointment_form($record, $ajax_handler) {
+    public function validate_appointment_form(object $record, object $ajax_handler): void {
         $raw_fields_original = null;
         try {
             $raw_fields_original = $record->get('fields');
@@ -456,7 +466,7 @@ class Elementor {
      * @param \ElementorPro\Modules\Forms\Classes\Record $record
      * @return void
      */
-    public function handle_new_record($record) {
+    public function handle_new_record(object $record): void {
         if (!class_exists('\CalendarServiceAppointmentsForm\Core\Database')) {
             return;
         }
@@ -616,7 +626,7 @@ class Elementor {
      * @param string $name
      * @return string
      */
-    private function get_field_value($raw_fields, $name) {
+    private function get_field_value(array $raw_fields, string $name): string {
         foreach ($raw_fields as $field) {
             if (is_array($field) && isset($field['name']) && $field['name'] === $name) {
                 return is_string($field['value']) ? trim($field['value']) : '';
@@ -631,7 +641,7 @@ class Elementor {
      * @param array $raw_fields
      * @return string
      */
-    private function get_service_title_from_fields($raw_fields) {
+    private function get_service_title_from_fields(array $raw_fields): string {
         $service = $this->get_field_value($raw_fields, 'appointment_service');
         if ($service !== '') {
             return $service;
@@ -651,7 +661,7 @@ class Elementor {
      * @param array $raw_fields
      * @return string
      */
-    private function get_user_from_fields($raw_fields) {
+    private function get_user_from_fields(array $raw_fields): string {
         $user = $this->normalize_username_value($this->get_field_value($raw_fields, 'csa_username'));
         if ($user !== '') {
             return $user;
@@ -693,7 +703,7 @@ class Elementor {
      * @param string $value
      * @return string
      */
-    private function normalize_username_value($value) {
+    private function normalize_username_value(string $value): string {
         if (!is_string($value)) {
             return '';
         }
@@ -717,7 +727,7 @@ class Elementor {
      * @param string $username
      * @return array
      */
-    private function apply_user_to_fields($raw_fields, $username, $display_name = '') {
+    private function apply_user_to_fields(array $raw_fields, string $username, string $display_name = ''): array {
         if ($username === '') {
             return $raw_fields;
         }
@@ -771,7 +781,7 @@ class Elementor {
      * @param string $username
      * @return array|\WP_Error
      */
-    private function resolve_booking_user($date, $time, $duration_seconds, $username) {
+    private function resolve_booking_user(string $date, string $time, int $duration_seconds, string $username): array|\WP_Error {
         $username = is_string($username) ? trim($username) : '';
         if ($username === '') {
             return ['user_id' => null, 'username' => ''];
@@ -819,7 +829,7 @@ class Elementor {
      * @param int $duration_seconds
      * @return bool
      */
-    private function has_any_available_user($date, $time, $duration_seconds) {
+    private function has_any_available_user(string $date, string $time, int $duration_seconds): bool {
         $available = $this->get_available_user_ids_for_slot($date, $time, $duration_seconds);
         return !empty($available);
     }
@@ -832,7 +842,7 @@ class Elementor {
      * @param int $duration_seconds
      * @return array
      */
-    private function get_available_user_ids_for_slot($date, $time, $duration_seconds) {
+    private function get_available_user_ids_for_slot(string $date, string $time, int $duration_seconds): array {
         $slots = $this->build_slot_times($time, $duration_seconds);
         if (empty($slots)) {
             return [];
@@ -853,7 +863,7 @@ class Elementor {
      *
      * @return array
      */
-    private function get_selectable_user_ids() {
+    private function get_selectable_user_ids(): array {
         $enabled_ids = Access::get_bookable_user_ids();
         return array_values(array_unique(array_filter(array_map('intval', $enabled_ids))));
     }
@@ -865,7 +875,7 @@ class Elementor {
      * @param string $type
      * @return string
      */
-    private function extract_prop_value($raw_fields, $type) {
+    private function extract_prop_value(array $raw_fields, string $type): string {
         $prefix = 'csa::' . $type;
         foreach ($raw_fields as $field) {
             $value = '';
@@ -896,7 +906,7 @@ class Elementor {
      * @param string $value
      * @return array|null
      */
-    private function parse_composite_datetime($value) {
+    private function parse_composite_datetime(string $value): ?array {
         if (!$value) {
             return null;
         }
@@ -921,7 +931,7 @@ class Elementor {
      * @param array $raw_fields
      * @return array
      */
-    private function sanitize_prefixed_props($raw_fields) {
+    private function sanitize_prefixed_props(array $raw_fields): array {
         $prefixes = ['csa::service', 'csa::time', 'csa::user'];
         foreach ($raw_fields as $idx => $field) {
             if (!is_array($field) || !isset($field['value'])) {
@@ -954,7 +964,7 @@ class Elementor {
      * @param array $raw_fields
      * @return array
      */
-    private function build_submission_data($raw_fields) {
+    private function build_submission_data(array $raw_fields): array {
         $submission_data = [];
         foreach ($raw_fields as $field) {
             $key = null;
@@ -988,7 +998,7 @@ class Elementor {
      * @param array $submission_data
      * @return int|null
      */
-    private function resolve_user_id_from_submission($submission_data) {
+    private function resolve_user_id_from_submission(mixed $submission_data): int {
         if (!is_array($submission_data)) {
             return null;
         }
@@ -1015,7 +1025,7 @@ class Elementor {
      * @param string $service_title
      * @return int
      */
-    private function get_service_duration_seconds($service_title) {
+    private function get_service_duration_seconds(string $service_title): int {
         if ($service_title === '') {
             return 0;
         }
@@ -1045,7 +1055,7 @@ class Elementor {
      *
      * @return array
      */
-    private function get_business_hours() {
+    private function get_business_hours(): array {
         return [
             '06:00', '06:30', '07:00', '07:30',
             '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
@@ -1062,7 +1072,7 @@ class Elementor {
      * @param int $duration_seconds
      * @return array
      */
-    private function build_slot_times($start_time, $duration_seconds) {
+    private function build_slot_times(string $start_time, int $duration_seconds): array {
         $slots_needed = (int) ceil(max(0, (int) $duration_seconds) / 1800);
         if ($slots_needed <= 0) {
             return [];
@@ -1086,7 +1096,7 @@ class Elementor {
      * @param int $minutes
      * @return string|null
      */
-    private function add_minutes($time, $minutes) {
+    private function add_minutes(string $time, int $minutes): ?string {
         $dt = \DateTime::createFromFormat('H:i', $time);
         if (!$dt) {
             return null;
@@ -1104,7 +1114,7 @@ class Elementor {
      * @param Submissions $submissions
      * @return bool
      */
-    private function is_time_range_available($date, $slots, $db, $submissions, $user_id = null) {
+    private function is_time_range_available(string $date, array $slots, Database $db, Submissions $submissions, ?int $user_id = null): bool {
         $weekly = $db->get_weekly_availability($user_id);
         $holiday_availability = $db->get_holiday_availability($user_id);
         $dow = date('w', strtotime($date));
@@ -1153,7 +1163,7 @@ class Elementor {
      * @param Database $db
      * @return bool
      */
-    private function reserve_time_range($date, $slots, $db, $user_id = null) {
+    private function reserve_time_range(string $date, array $slots, Database $db, ?int $user_id = null): bool {
         $reserved = [];
         foreach ($slots as $time) {
             $ok = $db->reserve_time_slot($date, $time, $user_id);
@@ -1174,7 +1184,7 @@ class Elementor {
      * @param string $time
      * @return string
      */
-    private function normalize_time_value($time) {
+    private function normalize_time_value(string $time): string {
         if (!is_string($time) || $time === '') {
             return '';
         }
@@ -1186,12 +1196,47 @@ class Elementor {
     }
 
     /**
+     * Ensure the slot is at least N hours from now in the configured timezone.
+     *
+     * @param string $date
+     * @param string $time
+     * @param int $min_hours
+     * @return bool
+     */
+    private function meets_min_lead_time(string $date, string $time, int $min_hours = 3): bool {
+        $date = trim($date);
+        $time = trim($time);
+        if ($date === '' || $time === '' || $min_hours <= 0) {
+            return false;
+        }
+        if (strlen($time) === 5) {
+            $time .= ':00';
+        }
+        $tz_string = Database::get_instance()->get_timezone_string();
+        try {
+            $tz = new \DateTimeZone($tz_string);
+        } catch (\Exception $e) {
+            $tz = new \DateTimeZone('UTC');
+        }
+        $slot = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time, $tz);
+        if (!$slot) {
+            return false;
+        }
+        $now = new \DateTimeImmutable('now', $tz);
+        $min = $now->modify('+' . $min_hours . ' hours');
+        if (!$min) {
+            return false;
+        }
+        return $slot >= $min;
+    }
+
+    /**
      * Build a set of available start times from a master response.
      *
      * @param array $response
      * @return array
      */
-    private function extract_master_times($response) {
+    private function extract_master_times(array $response): array {
         $times = [];
         if (!is_array($response) || empty($response['times']) || !is_array($response['times'])) {
             return $times;
@@ -1217,7 +1262,7 @@ class Elementor {
      * @param int $duration_seconds
      * @return bool|\WP_Error
      */
-    private function check_master_time_available($date, $time, $duration_seconds) {
+    private function check_master_time_available(string $date, string $time, int $duration_seconds): bool|\WP_Error {
         $response = Multisite::fetch_master_available_times($date, $duration_seconds);
         if (is_wp_error($response)) {
             return $response;
@@ -1239,7 +1284,7 @@ class Elementor {
      * @param array $submission_data
      * @return array|\WP_Error
      */
-    private function book_on_master_site($date, $time, $service_title, $duration_seconds, $submission_data) {
+    private function book_on_master_site(string $date, string $time, string $service_title, int $duration_seconds, array $submission_data): array|\WP_Error {
         return Multisite::book_on_master($date, $time, $service_title, $duration_seconds, $submission_data);
     }
 
@@ -1251,7 +1296,7 @@ class Elementor {
      * @param string $message
      * @return void
      */
-    private function add_blocking_error($record, $ajax_handler, $message) {
+    private function add_blocking_error(object $record, object $ajax_handler, string $message): void {
         if (is_object($ajax_handler) && method_exists($ajax_handler, 'add_error_message')) {
             $ajax_handler->add_error_message($message);
         }
