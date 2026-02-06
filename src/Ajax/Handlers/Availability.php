@@ -364,7 +364,7 @@ class Availability extends BaseHandler {
                 if ($user_id && $service !== '' && !Access::user_can_perform_service($user_id, $service)) {
                     $days = [];
                 } else {
-                $days = $this->build_available_days(sprintf('%04d-%02d', $year, $month), 1, $user_id);
+                $days = $this->build_available_days(sprintf('%04d-%02d', $year, $month), 1, $user_id, $duration_seconds);
                 }
             }
 
@@ -413,7 +413,7 @@ class Availability extends BaseHandler {
             if ($service !== '' && !Access::user_can_perform_service($user_id, $service)) {
                 wp_send_json_success(['days' => []]);
             }
-            $days = $this->build_available_days($month, $slots_needed, $user_id);
+            $days = $this->build_available_days($month, $slots_needed, $user_id, $duration_seconds);
         }
 
         wp_send_json_success(['days' => $days]);
@@ -809,7 +809,7 @@ class Availability extends BaseHandler {
      * @param int|null $user_id
      * @return array
      */
-    public function build_available_days(string $month, int $slots_needed, ?int $user_id = null): array {
+    public function build_available_days(string $month, int $slots_needed, ?int $user_id = null, ?int $duration_seconds = null): array {
         list($year, $mon) = array_map('intval', explode('-', $month));
 
         $tz = $this->get_timezone_object();
@@ -820,12 +820,14 @@ class Availability extends BaseHandler {
         $days_in_month = (int)$dt->format('t');
         $days = [];
 
+        $duration_seconds = $duration_seconds === null ? max(0, (int) $slots_needed) * 1800 : max(0, (int) $duration_seconds);
+
         for ($d = 1; $d <= $days_in_month; $d++) {
             $dateStr = sprintf('%04d-%02d-%02d', $year, $mon, $d);
             if ($dateStr < $today) {
                 continue;
             }
-            $times = $this->build_available_times($dateStr, max(0, (int) $slots_needed) * 1800, $user_id);
+            $times = $this->build_available_times($dateStr, $duration_seconds, $user_id);
             if (!empty($times)) {
                 $days[] = [
                     'value' => sprintf('%02d', $d),

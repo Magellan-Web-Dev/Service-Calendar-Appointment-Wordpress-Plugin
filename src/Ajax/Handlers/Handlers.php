@@ -152,8 +152,8 @@ class Handlers extends BaseHandler {
         return $this->availability->build_available_days_anyone($month, $slots_needed, $duration_seconds);
     }
 
-    public function build_available_days(string $month, int $slots_needed, ?int $user_id = null): mixed {
-        return $this->availability->build_available_days($month, $slots_needed, $user_id);
+    public function build_available_days(string $month, int $slots_needed, ?int $user_id = null, ?int $duration_seconds = null): mixed {
+        return $this->availability->build_available_days($month, $slots_needed, $user_id, $duration_seconds);
     }
 
     public function check_time_range_available(string $date, string $start_time, int $duration_seconds, ?int $user_id = null): mixed {
