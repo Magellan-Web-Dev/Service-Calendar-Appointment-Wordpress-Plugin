@@ -66,7 +66,7 @@ class CalendarPage {
                         <input type="hidden" name="month" value="<?php echo esc_attr($month); ?>" />
                         <input type="hidden" name="year" value="<?php echo esc_attr($year); ?>" />
                         <label for="csa-user-filter-select" style="font-weight: 600;"><?php esc_html_e('View calendar for:', $text_domain); ?></label>
-                        <select id="csa-user-filter-select" name="user_id">
+                        <select id="csa-user-filter-select" name="user_id" onchange="this.form.submit()">
                             <?php foreach ($users as $user) :
                                 $uid = intval($user->ID);
                                 $display = trim($user->first_name . ' ' . $user->last_name);
@@ -81,7 +81,6 @@ class CalendarPage {
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <button class="button" type="submit"><?php esc_html_e('View', $text_domain); ?></button>
                     </form>
                 <?php endif; ?>
                 <div id="csa-reschedule-banner" class="csa-reschedule-banner" style="display:none;">
