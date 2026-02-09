@@ -112,6 +112,13 @@ class Rescheduling extends BaseHandler {
             wp_send_json_error(['message' => __('Failed to reschedule appointment', self::TEXT_DOMAIN)]);
         }
 
+        $this->release_custom_reservations([
+            'appointment_date' => $appointment['date'],
+            'appointment_time' => $appointment['time'],
+            'submission_data' => $appointment['all_data'],
+            'user_id' => $appointment_user_id,
+        ], $appointment_user_id);
+
         $reschedule_payload = [
             'appt_id' => $appt_id,
             'user_id' => $appointment_user_id,

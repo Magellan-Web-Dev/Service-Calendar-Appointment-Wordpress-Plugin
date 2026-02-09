@@ -229,6 +229,15 @@ class UserSelectShortcode {
         this.placeholder = qs('.csa-user-placeholder', container);
         this.list = qsa('.csa-user-item', container);
         this.select = qs('.csa-user-select', container);
+        this.selectOptions = this.select
+            ? Array.from(this.select.options).map((option) => ({
+                value: option.value || '',
+                label: option.textContent || '',
+                fullName: option.dataset.fullName || '',
+                disabled: option.disabled,
+                isPlaceholder: (option.value || '') === '',
+            }))
+            : [];
         this.hidden = qs('.csa-user-hidden', container);
         this.hiddenForm = qs('.csa-user-hidden-form', container);
         this.hiddenUsername = qs('.csa-user-hidden-username', container);
@@ -286,6 +295,54 @@ class UserSelectShortcode {
         this.applyUserFilter(getServiceSlugFromForm(this.container));
         this.updateVisibility();
         this.updateDisabledState();
+    }
+
+    renderUserSelect(allowedSet, showAnyone = true) {
+        if (!this.select) {
+            return;
+        }
+        const current = (this.hidden ? (this.hidden.value || '').trim() : '') || (this.select.value || '').trim();
+        const options = this.selectOptions.filter((option) => {
+            if (option.isPlaceholder) {
+                return true;
+            }
+            if (!allowedSet) {
+                return true;
+            }
+            if (!option.value) {
+                return true;
+            }
+            if (this.anyoneValue && option.value === this.anyoneValue) {
+                return !!showAnyone;
+            }
+            return allowedSet.has(option.value);
+        });
+
+        this.select.innerHTML = '';
+        let hasCurrent = false;
+        options.forEach((option) => {
+            const el = document.createElement('option');
+            el.value = option.value;
+            el.textContent = option.label;
+            if (option.fullName) {
+                el.dataset.fullName = option.fullName;
+            }
+            if (option.disabled) {
+                el.disabled = true;
+            }
+            if (option.value && option.value === current) {
+                el.selected = true;
+                hasCurrent = true;
+            }
+            this.select.appendChild(el);
+        });
+
+        if (!hasCurrent) {
+            const placeholder = this.select.querySelector('option[value=""]');
+            if (placeholder) {
+                placeholder.selected = true;
+            }
+        }
     }
 
     selectUser(username, fullName = '') {
@@ -417,11 +474,7 @@ class UserSelectShortcode {
             this.list.forEach((item) => {
                 item.style.display = '';
             });
-            if (this.select) {
-                Array.from(this.select.options).forEach((option) => {
-                    option.hidden = false;
-                });
-            }
+            this.renderUserSelect(null, true);
             if (this.placeholder) {
                 this.placeholder.textContent = 'Select a service';
             }
@@ -448,38 +501,19 @@ class UserSelectShortcode {
             }
         });
 
-        if (this.select) {
-            Array.from(this.select.options).forEach((option) => {
-                const username = (option.value || '').trim();
-                if (!username || !serviceSlug) {
-                    option.hidden = false;
-                    return;
-                }
-                if (this.anyoneValue && username === this.anyoneValue) {
-                    option.hidden = true;
-                    return;
-                }
-                option.hidden = !allowedSet.has(username);
-            });
-        }
+        let showAnyone = false;
 
         if (this.anyoneValue) {
-            const showAnyone = eligibleCount > 1;
+            showAnyone = eligibleCount > 1;
             this.list.forEach((item) => {
                 const username = (item.dataset.username || '').trim();
                 if (username === this.anyoneValue) {
                     item.style.display = showAnyone ? '' : 'none';
                 }
             });
-            if (this.select) {
-                Array.from(this.select.options).forEach((option) => {
-                    const username = (option.value || '').trim();
-                    if (username === this.anyoneValue) {
-                        option.hidden = !showAnyone;
-                    }
-                });
-            }
         }
+
+        this.renderUserSelect(allowedSet, showAnyone);
 
         if (this.placeholder) {
             if (eligibleCount === 0) {

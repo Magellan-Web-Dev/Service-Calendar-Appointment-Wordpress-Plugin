@@ -495,4 +495,57 @@ trait AppointmentHelpers {
         }
         return null;
     }
+
+    /**
+     * Release blocked slots created by a custom appointment reservation.
+     *
+     * @param array $appointment
+     * @param int|null $fallback_user_id
+     * @return void
+     */
+    protected function release_custom_reservations(array $appointment, ?int $fallback_user_id = null): void {
+        $all_data = null;
+        if (isset($appointment['submission_data']) && is_array($appointment['submission_data'])) {
+            $all_data = $appointment['submission_data'];
+        } elseif (isset($appointment['all_data']) && is_array($appointment['all_data'])) {
+            $all_data = $appointment['all_data'];
+        }
+        if (!$all_data || empty($all_data['csa_custom_appointment'])) {
+            return;
+        }
+
+        $date = (string) ($appointment['appointment_date'] ?? $appointment['date'] ?? '');
+        $time = (string) ($appointment['appointment_time'] ?? $appointment['time'] ?? '');
+        if ($date === '' || $time === '') {
+            return;
+        }
+
+        $service_duration_map = $this->get_service_duration_map();
+        $appt = [
+            'time' => $time,
+            'date' => $date,
+            'all_data' => $all_data,
+        ];
+        if (!empty($all_data['csa_service'])) {
+            $appt['service'] = $all_data['csa_service'];
+        }
+        $duration_seconds = $this->get_appointment_duration_seconds($appt, $service_duration_map);
+        if ($duration_seconds <= 0) {
+            return;
+        }
+
+        $slots = $this->build_slot_times_for_duration($time, $duration_seconds);
+        if (empty($slots)) {
+            return;
+        }
+
+        $user_id = isset($appointment['user_id']) ? intval($appointment['user_id']) : $fallback_user_id;
+        if (!$user_id) {
+            $user_id = $this->resolve_request_user_id(true);
+        }
+        $db = Database::get_instance();
+        foreach ($slots as $slot) {
+            $db->unblock_time_slot($date, $slot, $user_id);
+        }
+    }
 }

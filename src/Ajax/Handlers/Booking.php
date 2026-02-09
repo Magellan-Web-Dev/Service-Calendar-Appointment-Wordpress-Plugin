@@ -38,6 +38,10 @@ class Booking extends BaseHandler {
         $db = Database::get_instance();
 
         if ($appt_id) {
+            $appt = $db->get_appointment_by_id($appt_id);
+            if ($appt) {
+                $this->release_custom_reservations($appt, isset($appt['user_id']) ? intval($appt['user_id']) : null);
+            }
             $res = $db->delete_appointment_by_id($appt_id);
         } elseif ($submission_id && $date && $time) {
             $res = $db->delete_appointment_by_submission($submission_id, $date, $time);
@@ -137,6 +141,10 @@ class Booking extends BaseHandler {
             }
             $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
             wp_send_json_error(['message' => __('Failed to schedule custom appointment', self::TEXT_DOMAIN)]);
+        }
+
+        foreach ($reserved as $t) {
+            $db->unblock_time_slot($date, $t, $user_id);
         }
 
         $wpdb->get_var($wpdb->prepare("SELECT RELEASE_LOCK(%s)", $lock_name));
